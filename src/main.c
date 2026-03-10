@@ -1,6 +1,5 @@
 /*
 
-/*
  * 1. INCLUDES & DEFINES
  *
  */
@@ -8,6 +7,9 @@
 #include <stdbool.h>
 #include <stm32f031x6.h>
 #include "display.h"
+#include <stdint.h>
+#include <stdio.h>
+
 
 /* --- Screen --------------------------------------------------------------- */
 #define SCREEN_W 128
@@ -107,12 +109,25 @@ typedef struct {
   AlienGrid aliens;
 } GameState;
 
+typedef enum  {
+        MAINMENU,
+        GAMESTART,
+        HELP,
+        PAUSE,
+        RECORD,
+        GAMEOVER
+} PlayingState;
+
+
+
 /*
  * 3. GLOBALS & SPRITES
  */
 volatile uint32_t milliseconds = 0;
 static uint32_t lastUpdate = 0;
 static const uint32_t FRAME_DELAY = 16; /* ~60 fps */
+
+PlayingState currentPlayingState = MAINMENU;
 
 static GameState gs;
 
@@ -258,6 +273,116 @@ static void initGameState(void) {
   /* Alien grid */
   initAlienGrid();
 }
+
+void clearDisplay() {
+    fillRectangle(0, 0, SCREEN_W, SCREEN_H, 0);  
+}
+
+/*
+* 6. MAIN MENU & HELP
+*
+*/
+
+void mainMenu(PlayingState *ps) {
+
+	clearDisplay();
+
+        int selectedOption = 0 ; 
+        
+        uint16_t normal = RGBToWord(0xff,0xff,0);
+        uint16_t highlighted = RGBToWord(211,211,211);
+        uint16_t startButton = normal;
+        uint16_t helpButton = normal;
+        uint16_t scoreButton = normal;
+        
+        int done = 0;
+        
+        while (!done) {
+                
+                if (selectedOption ==0) {
+                        startButton = highlighted;
+                        helpButton = normal;
+                        scoreButton = normal;
+                }
+                if (selectedOption ==1) {
+                        helpButton = highlighted;
+                        scoreButton = normal;
+                        startButton = normal;
+                }
+                if (selectedOption ==2) {
+                        scoreButton = highlighted;
+                        startButton = normal;
+                        helpButton = normal;
+                }
+                printText("Start Game", 20, 60, startButton, 0);
+                printText("Help", 20, 80, helpButton, 0);
+                printText("High Scores", 20, 100, scoreButton, 0);
+                
+                
+                if ((GPIOA->IDR & (1 << 11)) == 0) {
+                        if (selectedOption < 2) {
+                                selectedOption++;
+                                delay(100);
+                        } 
+                }
+                
+                
+                if ((GPIOA->IDR & (1 << 8)) == 0) {
+                        if (selectedOption > 0) {
+                                selectedOption--;
+                                delay(100);
+                        }
+                }
+                
+                
+                if ((GPIOB->IDR & (1 << 4)) == 0) {
+                        if (selectedOption == 0) {
+                                *ps = GAMESTART;
+                                done = 1;
+                        }
+                        if (selectedOption == 1) {
+                                *ps = HELP;   
+                                done = 1;
+                                
+                        }
+                        if (selectedOption==2) {
+				                  *ps = RECORD;
+			                  	done = 1;
+			                 }
+                      
+                }
+                
+        }
+}
+
+
+void help(PlayingState *ps) {
+	clearDisplay();
+	
+	int done =0;
+
+    while (!done) {
+	    printTextX2("HELP", 40, 0, RGBToWord(255,255,0), 0);
+
+  	  printText("Control spaceship:", 0, 20, RGBToWord(255,255,255), 0);
+      printText("Left/Right buttons",0,30,RGBToWord(255,255,255),0);
+  	  printText("FIRE = UP BUTTON", 0, 60, RGBToWord(255,255,255), 0);
+   	  printText("PAUSE = DOWN BUTTON", 0, 80, RGBToWord(255,255,255), 0);
+
+	    printText("EXIT HELP = DOWN BUTTON", 0,120, RGBToWord(255,255,255),0);
+
+  
+    	if ((GPIOA->IDR & (1 << 11)) == 0) {
+
+        *ps = MAINMENU;
+        done =1;
+        
+	    }
+    }
+}
+
+
+
 
 /*
  * 6. INPUT
@@ -542,17 +667,9 @@ static void resetGame(void) {
   /* HUD line stays – was never erased */
 }
 
-/*
- * 10. MAIN
- *
- */
-int main(void) {
-  /* Hardware */
-  initClock();
-  initSysTick();
-  setupIO();
-  initSound();
+void playing(PlayingState *ps) {
 
+  clearDisplay();
   /* Game */
   initGameState();
 
@@ -561,6 +678,9 @@ int main(void) {
   putImage(gs.ship.coords.x, gs.ship.coords.y, SHIP_W, SHIP_H, spaceShip, 1, 0);
   drawLine(0, HUD_LINE_Y, SCREEN_W, HUD_LINE_Y, HUD_LINE_COLOR);
 
+  /
+  switch(){
+  }
   /* Game loop */
   while (1) {
     // twinkle_twinkle();
@@ -591,6 +711,47 @@ int main(void) {
     }
     renderScene(); /* positions -> screen           */
   }
+
+}
+
+
+/*
+ * 10. MAIN
+ *
+ */
+int main(void) {
+  /* Hardware */
+  initClock();
+  initSysTick();
+  setupIO();
+  initSound();
+
+   // Game Begins
+        while(1)
+        {
+                // Switch statement for our Game State
+                switch (currentPlayingState){
+                        
+                        case MAINMENU:
+                           mainMenu(&currentPlayingState);
+                        break;
+                        case HELP:
+                            help(&currentPlayingState);
+                        break;
+                        case GAMESTART:
+                        playing(&currentPlayingState);
+                        break;
+                        case PAUSE:
+                        //runPausedScreen();
+                        break;
+                        case GAMEOVER:
+                        //runGameOver();
+                        break;
+                        default:
+                        break;
+                }
+               
+        }
 
   return 0;
 }
