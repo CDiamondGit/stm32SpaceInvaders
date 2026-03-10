@@ -1,0 +1,29 @@
+This directory is intended for PlatformIO Test Runner and project tests.
+
+Unit Testing is a software testing method by which individual units of
+source code, sets of one or more MCU program modules together with associated
+control data, usage procedures, and operating procedures, are tested to
+determine whether they are fit for use. Unit testing finds problems early
+in the development cycle.
+
+More information about PlatformIO Unit Testing:
+
+- https://docs.platformio.org/en/latest/advanced/unit-testing/index.html
+
+/\* ============================================================================
+
+- Space Invaders – STM32F031
+- ***
+- File layout:
+- 1.  Includes & defines
+- 2.  Types & enums
+- 3.  Globals & sprites
+- 4.  STM32 hardware setup (initClock, initSysTick, setupIO, delay)
+- 5.  Game init (initGameState)
+- 6.  Input (handleInput)
+- 7.  Alien movement (moveAliens)
+- 8.  Collision (checkCollision, resetBullet, updateCollision)
+- 9.  Render (renderAliens, renderShip, renderBullet,
+- renderScene)
+- 10. main
+- \*/
