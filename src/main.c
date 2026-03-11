@@ -1,6 +1,4 @@
 /*
-
-/*
  * 1. INCLUDES & DEFINES
  *
  */
@@ -8,6 +6,8 @@
 #include <stdbool.h>
 #include <stm32f031x6.h>
 #include "display.h"
+#include "sound_effects.h"
+#include "musical_notes.h"
 
 /* --- Screen --------------------------------------------------------------- */
 #define SCREEN_W 128
@@ -183,10 +183,6 @@ static void initSysTick(void) {
   SysTick->CTRL = 7;
   SysTick->VAL = 10;
   __asm(" cpsie i ");
-}
-
-void SysTick_Handler(void) {
-  milliseconds++;
 }
 
 static void setupIO(void) {
@@ -454,14 +450,14 @@ static int checkGameOver(void) {
  */
 
 /*
- * renderAliens – full grid redraw.
- * Used at startup, level reset, and after every move tick.
- *
- * On a move tick the dirty-strip strategy is used:
- *   1. Erase the vacated edge strip (one fillRectangle call).
- *   2. Blit only alive aliens – dead cells stay black automatically
- *      because the strip erase already cleared them.
- */
+  * renderAliens – full grid redraw.
+  * Used at startup, level reset, and after every move tick.
+  *
+  * On a move tick the dirty-strip strategy is used:
+  *   1. Erase the vacated edge strip (one fillRectangle call).
+  *   2. Blit only alive aliens – dead cells stay black automatically
+  *      because the strip erase already cleared them.
+  */
 
 static void renderAliens(void) {
   AlienGrid* ag = &gs.aliens;
@@ -542,6 +538,67 @@ static void resetGame(void) {
   /* HUD line stays – was never erased */
 }
 
+volatile const uint32_t *background_tune_notes = 0;
+volatile const uint32_t *background_tune_times = 0;
+volatile uint32_t background_tune_note_count = 0;
+volatile uint32_t background_repeat_tune = 1;
+volatile int current_note_timer = 0;
+volatile int current_note_index = 0;
+
+const uint32_t twinkle_notes[] = 
+{
+    C4, C4, G4, G4, A4, A4, G4,
+    F4, F4, E4, E4, D4, D4, C4,
+    G4, G4, F4, F4, E4, E4, D4,
+    G4, G4, F4, F4, E4, E4, D4,
+    C4, C4, G4, G4, A4, A4, G4,
+    F4, F4, E4, E4, D4, D4, C4
+};
+const uint32_t twinkle_times[] = 
+{
+    250, 250, 250, 250, 250, 250, 500,
+    250, 250, 250, 250, 250, 250, 500,
+    250, 250, 250, 250, 250, 250, 500,
+    250, 250, 250, 250, 250, 250, 500,
+    250, 250, 250, 250, 250, 250, 500,
+    250, 250, 250, 250, 250, 250, 600
+};
+uint32_t twinkle_note_count = 42;
+void SysTick_Handler(void)
+{
+    milliseconds++;
+
+    if (background_tune_notes != 0)
+    {
+        if (current_note_timer > 0)
+        {
+            current_note_timer--;
+        }
+
+        if (current_note_timer == 0)
+        {
+            current_note_index++;
+
+            if (current_note_index >= background_tune_note_count)
+            {
+                if (background_repeat_tune == 0)
+                {
+                    background_tune_notes = 0;
+                    stopSound();
+                    return;
+                }
+                else
+                {
+                    current_note_index = 0;
+                }
+            }
+
+            current_note_timer = background_tune_times[current_note_index];
+            playNote(background_tune_notes[current_note_index]);
+        }
+    }
+}
+
 /*
  * 10. MAIN
  *
@@ -553,6 +610,15 @@ int main(void) {
   setupIO();
   initSound();
 
+  background_tune_notes = twinkle_notes;
+	background_tune_times = twinkle_times;
+	background_tune_note_count = twinkle_note_count;
+	background_repeat_tune = 1;
+
+	current_note_index = 0;
+	current_note_timer = background_tune_times[0];
+	playNote(background_tune_notes[0]);
+
   /* Game */
   initGameState();
 
@@ -563,7 +629,6 @@ int main(void) {
 
   /* Game loop */
   while (1) {
-    // twinkle_twinkle();
     uint32_t now = milliseconds;
     if (now - lastUpdate < FRAME_DELAY)
       continue;
