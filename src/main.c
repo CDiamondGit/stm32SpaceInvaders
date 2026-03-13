@@ -144,6 +144,28 @@ static const uint16_t blueAlien[] = {
     0,     0,     0,     41187, 41187, 0,     41187, 41187, 0,     0,     0,
 };
 
+static const uint16_t redAlien[] = {
+    0,     0,     65320, 0,     0,     0,     0,     0,     65320, 0,     0,
+    0,     0,     0,     65320, 0,     0,     0,     65320, 0,     0,     0,
+    0,     0,     65320, 65320, 65320, 65320, 65320, 65320, 65320, 0,     0,
+    0,     65320, 65320, 0,     65320, 65320, 65320, 0,     65320, 65320, 0,
+    65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320,
+    65320, 0,     65320, 65320, 65320, 65320, 65320, 65320, 65320, 0,     65320,
+    65320, 0,     65320, 0,     0,     0,     0,     0,     65320, 0,     65320,
+    0,     0,     0,     65320, 65320, 0,     65320, 65320, 0,     0,     0,
+};
+
+static const uint16_t greenAlien[] = {
+    0,     0,     51975, 0,     0,     0,     0,     0,     51975, 0,     0,
+    0,     0,     0,     51975, 0,     0,     0,     51975, 0,     0,     0,
+    0,     0,     51975, 51975, 51975, 51975, 51975, 51975, 51975, 0,     0,
+    0,     51975, 51975, 0,     51975, 51975, 51975, 0,     51975, 51975, 0,
+    51975, 51975, 51975, 51975, 51975, 51975, 51975, 51975, 51975, 51975, 51975,
+    51975, 0,     51975, 51975, 51975, 51975, 51975, 51975, 51975, 0,     51975,
+    51975, 0,     51975, 0,     0,     0,     0,     0,     51975, 0,     51975,
+    0,     0,     0,     51975, 51975, 0,     51975, 51975, 0,     0,     0,
+};
+
 /*
  * 4. STM32 HARDWARE SETUP
  *
@@ -479,9 +501,22 @@ static void renderAliens(void) {
     for (int j = 0; j < ALIEN_COLS; j++) {
       if (ag->status[i][j] != 0)
         continue;
-      putImage((uint16_t)(ag->offsetX + ag->basePosX[j]),
-               (uint16_t)(ag->offsetY + ag->basePosY[i]), ALIEN_W, ALIEN_H,
-               blueAlien, 1, 0);
+
+      if (i == 0) {
+        putImage((uint16_t)(ag->offsetX + ag->basePosX[j]),
+                 (uint16_t)(ag->offsetY + ag->basePosY[i]), ALIEN_W, ALIEN_H,
+                 redAlien, 1, 0);
+      }
+      if (i == 1) {
+        putImage((uint16_t)(ag->offsetX + ag->basePosX[j]),
+                 (uint16_t)(ag->offsetY + ag->basePosY[i]), ALIEN_W, ALIEN_H,
+                 greenAlien, 1, 0);
+      }
+      if (i == 2) {
+        putImage((uint16_t)(ag->offsetX + ag->basePosX[j]),
+                 (uint16_t)(ag->offsetY + ag->basePosY[i]), ALIEN_W, ALIEN_H,
+                 blueAlien, 1, 0);
+      }
     }
   }
 
