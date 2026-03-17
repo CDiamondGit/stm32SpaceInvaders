@@ -27,7 +27,7 @@
 #define BULLET_OFFSET_X 6
 #define BULLET_OFFSET_Y 13
 #define BULLET_SPEED 4
-#define ALIEN_BULLET_SPEED 1
+#define ALIEN_BULLET_SPEED 3
 #define BULLET_COLOR 65287
 #define ALIEN_BULLET_COLOR 57034
 
@@ -61,9 +61,6 @@
 /* --- HUD ------------------------------------------------------------------ */
 #define HUD_LINE_Y 144
 #define HUD_LINE_COLOR 57351
-
-#define ALIEN_FIRE_MIN_MS 800
-#define ALIEN_FIRE_MAX_MS 3000
 
 /*
  * 2. structs & ENUMS
@@ -107,7 +104,6 @@ typedef struct {
   uint16_t basePosY[ALIEN_ROWS]; /* relative Y per row    */
   int8_t earToggle;
   Bullet ab[ALIEN_COLS];
-  uint32_t nextFireTime[ALIEN_COLS];
 } AlienGrid;
 
 typedef struct {
@@ -281,18 +277,7 @@ uint32_t xorshift32() {
 }
 
 static uint8_t shouldFire(uint8_t threshold) {
-  return (xorshift32() % threshold) ==
-         0;  // threshold => more higher less likely to fire
-  /*
-  threshold = 3:
-  possible results of % 3 → { 0, 1, 2 }
-  only 0 returns 1 → 1 in 3 chance = 33%
-  */
-}
-
-static uint32_t randomFireDelay(void) {
-  uint32_t range = ALIEN_FIRE_MAX_MS - ALIEN_FIRE_MIN_MS;
-  return ALIEN_FIRE_MIN_MS + (xorshift32() % range);
+  return (xorshift32() % threshold) == 0;
 }
 
 uint8_t get_random_bit(uint32_t* state) {
@@ -313,7 +298,7 @@ int isInside(uint16_t x1,
  *
  */
 
-static void parkAlienBullet(int col) {
+static void parkAlienBullet(col) {
   AlienGrid* ag = &gs.aliens;
   Bullet* b = &ag->ab[col];
 
@@ -356,6 +341,15 @@ static void initAlienGrid() {
   for (int j = 0; j < ALIEN_COLS; j++)
     ag->basePosX[j] = (uint16_t)(j * (ALIEN_W + ALIEN_GAP_X));
 
+  for (int i = 0; i < ALIEN_COLS; i++) {
+    ag->ab[i].coords.x = ag->ab[i].coords.oldX =
+        (ag->offsetX + ag->basePosX[i]) + BULLET_OFFSET_X;
+    ag->ab[i].coords.y = ag->ab[i].coords.oldY =
+        (ag->offsetY + ag->basePosY[0]) - BULLET_OFFSET_Y;
+    ag->ab[i].speed = ALIEN_BULLET_SPEED;
+    ag->ab[i].state = BULLET_READY;
+  }
+
   // putImage((uint16_t)(ag->offsetX + ag->basePosX[j]),
   //                (uint16_t)(ag->offsetY + ag->basePosY[i]), ALIEN_W, ALIEN_H,
   //                redAlien[ag->earToggle], 1, 0);
@@ -364,11 +358,6 @@ static void initAlienGrid() {
   for (int i = 0; i < ALIEN_ROWS; i++)
     for (int j = 0; j < ALIEN_COLS; j++)
       ag->status[i][j] = 0;
-
-  for (int i = 0; i < ALIEN_COLS; i++) {
-    parkAlienBullet(i);
-    ag->nextFireTime[i] = milliseconds + randomFireDelay();
-  }
 }
 
 static void initGameState(void) {
@@ -487,11 +476,8 @@ static void moveAliens(uint32_t now) {
   if (nextX < ALIEN_MIN_X || nextX > ALIEN_MAX_X) {
     /* Hit a wall: drop down, reverse direction, no horizontal step */
 
-    // random fire on wall hit,
-    // TODO: take this function out and only run in certain interval instead of
-    // every wall hit...
     for (int j = 0; j < ALIEN_COLS; j++) {
-      if (ag->ab[j].state == BULLET_READY && shouldFire(12))
+      if (ag->ab[j].state == BULLET_READY && shouldFire(3))
         ag->ab[j].state = BULLET_FIRE;
     }
     ag->offsetY += ALIEN_DROP;
@@ -503,33 +489,6 @@ static void moveAliens(uint32_t now) {
   for (int j = 0; j < ALIEN_COLS; j++) {
     if (ag->ab[j].state == BULLET_READY)
       parkAlienBullet(j);
-  }
-}
-
-/*
- * updateAlienFire – per-column independent fire timer.
- * Each column fires when its nextFireTime is reached,
- * then rolls a new random delay.
- */
-static void updateAlienFire(uint32_t now) {
-  AlienGrid* ag = &gs.aliens;
-  for (int j = 0; j < ALIEN_COLS; j++) {
-    if (ag->ab[j].state != BULLET_READY)
-      continue; /* already in flight */
-
-    int hasAlive = 0;
-    for (int i = 0; i < ALIEN_ROWS; i++)
-      if (ag->status[i][j] == 0) {
-        hasAlive = 1;
-        break;
-      }
-    if (!hasAlive)
-      continue;
-
-    if (now >= ag->nextFireTime[j]) {
-      ag->ab[j].state = BULLET_FIRE;
-      ag->nextFireTime[j] = now + randomFireDelay();
-    }
   }
 }
 
@@ -731,7 +690,7 @@ static void renderAliens(void) {
                  (uint16_t)(ag->offsetY + ag->basePosY[i]), ALIEN_W, ALIEN_H,
                  greenAlien[ag->earToggle], 1, 0);
       }
-      if (i >= 2) {
+      if (i >=2) {
         putImage((uint16_t)(ag->offsetX + ag->basePosX[j]),
                  (uint16_t)(ag->offsetY + ag->basePosY[i]), ALIEN_W, ALIEN_H,
                  blueAlienBoth[ag->earToggle], 1, 0);
@@ -797,13 +756,8 @@ static void renderAlienBullets(void) {
   }
 }
 
-static void renderBarricade() {
-  fillRectangle(20, 115, 20, 10, 51975);
-}
-
 /* Top-level render dispatcher */
 static void renderScene(void) {
-  renderBarricade();
   renderAliens(); /* no-op internally if grid didn't move this frame */
   renderShip();
   renderPlayerBullet();
@@ -876,9 +830,8 @@ int main(void) {
       /* READY bullets track the grid in moveAliens/parkAlienBullet */
     }
 
-    handleInput();   /* buttons-> positions*/
-    moveAliens(now); /* now = time, timer-> alien grid shift */
-    updateAlienFire(now);
+    handleInput();           /* buttons-> positions*/
+    moveAliens(now);         /* now = time, timer-> alien grid shift */
     updatePlayerCollision(); /* bullet    -> alien grid       */
     /*
     TODO :

@@ -1,0 +1,732 @@
+/* ============================================================================
+ * Space Invaders – STM32F031
+ * ----------------------------------------------------------------------------
+ * File layout:
+ *   1.  Includes & defines
+ *   2.  Types & enums
+ *   3.  Globals & sprites
+ *   4.  STM32 hardware setup     (initClock, initSysTick, setupIO, delay)
+ *   5.  Game init                (initAlienGrid, initGameState)
+ *   6.  Input                    (handleInput)
+ *   7.  Alien movement           (getBottomAliveInCol, moveAliens)
+ *   8.  Collision                (checkCollision, resetPlayerBullet,
+ *                                 resetAlienBullet, updatePlayerCollision,
+ *                                 updateAlienBulletCollision,
+ *                                 repairAliensUnderRect,
+ *                                 getLowestAlienY, checkGameOver)
+ *   9.  Render                   (renderAliens, renderShip, renderPlayerBullet,
+ *                                 renderAlienBullets, renderScene)
+ *  10.  Game reset               (resetGame)
+ *  11.  main
+ * ============================================================================ */
+
+/* ============================================================================
+ * 1. INCLUDES & DEFINES
+ * ============================================================================ */
+#include <sound_effects.h>
+#include <stdbool.h>
+#include <stm32f031x6.h>
+#include "display.h"
+#include "serial.h"
+
+/* --- Screen --------------------------------------------------------------- */
+#define SCREEN_W            128
+#define SCREEN_H            160
+
+/* --- Ship ----------------------------------------------------------------- */
+#define SHIP_W              12
+#define SHIP_H              12
+#define SHIP_MIN_X          2
+#define SHIP_MAX_X          (SCREEN_W - SHIP_W - 2)
+#define SHIP_SPEED          2
+
+/* --- Bullet --------------------------------------------------------------- */
+#define BULLET_W            2
+#define BULLET_H            2
+#define BULLET_OFFSET_X     6
+#define BULLET_OFFSET_Y     13
+#define BULLET_SPEED        4
+#define BULLET_COLOR        65287          /* player bullet – cyan        */
+#define ALIEN_BULLET_COLOR  63488          /* alien bullet  – red         */
+
+/* --- Alien grid ----------------------------------------------------------- */
+#define ALIEN_W             11
+#define ALIEN_H             8
+#define ALIEN_ROWS          3
+#define ALIEN_COLS          5
+#define ALIEN_GAP_X         11
+#define ALIEN_GAP_Y         5
+#define ALIEN_ORIGIN_X      12
+#define ALIEN_ORIGIN_Y      20
+
+#define ALIEN_GRID_W   (ALIEN_COLS * (ALIEN_W + ALIEN_GAP_X) - ALIEN_GAP_X)
+#define ALIEN_GRID_H   (ALIEN_ROWS * (ALIEN_H + ALIEN_GAP_Y) - ALIEN_GAP_Y)
+
+#define ALIEN_MIN_X         2
+#define ALIEN_MAX_X         (SCREEN_W - ALIEN_GRID_W - 2)
+#define ALIEN_STEP          5
+#define ALIEN_MOVE_MS       600
+#define ALIEN_DROP          (ALIEN_H + ALIEN_GAP_Y)
+
+/* --- HUD ------------------------------------------------------------------ */
+#define HUD_LINE_Y          144
+#define HUD_LINE_COLOR      57351
+
+/* ============================================================================
+ * 2. TYPES & ENUMS
+ * ============================================================================ */
+typedef enum { BULLET_READY, BULLET_FIRE } BulletState;
+
+typedef struct {
+    uint16_t x, y;
+    uint16_t oldX, oldY;
+} Transform;
+
+typedef struct {
+    Transform   coords;
+    uint16_t    speed;
+} Ship;
+
+typedef struct {
+    Transform   coords;
+    BulletState state;
+    uint16_t    speed;
+} Bullet;
+
+/*
+ * AlienGrid – owns the whole formation.
+ *
+ *  offsetX/Y      current top-left origin of the grid
+ *  oldOffsetX/Y   origin on the previous move tick (for dirty erase)
+ *  dirX           +1 right / -1 left
+ *  earToggle      alternates 0/1 each tick → sprite animation frame
+ *  lastMoveTime   ms timestamp of last move
+ *  status[][]     0 = alive, 1 = dead
+ *  basePosX/Y[]   pixel offsets RELATIVE to origin (precomputed, constant)
+ *  ab[]           one Bullet per column – alien bullet for that column
+ */
+typedef struct {
+    int16_t  offsetX,    offsetY;
+    int16_t  oldOffsetX, oldOffsetY;
+    int8_t   dirX;
+    int8_t   earToggle;
+    uint32_t lastMoveTime;
+    uint8_t  status[ALIEN_ROWS][ALIEN_COLS];
+    uint16_t basePosX[ALIEN_COLS];
+    uint16_t basePosY[ALIEN_ROWS];
+    Bullet   ab[ALIEN_COLS];               /* one bullet per column       */
+} AlienGrid;
+
+typedef struct {
+    Ship      ship;
+    Bullet    bullet;
+    AlienGrid aliens;
+} GameState;
+
+/* ============================================================================
+ * 3. GLOBALS & SPRITES
+ * ============================================================================ */
+volatile uint32_t milliseconds = 0;
+static   uint32_t lastUpdate   = 0;
+static const uint32_t FRAME_DELAY = 16;   /* ~60 fps */
+
+static GameState gs;
+static uint32_t  rngState;               /* xorshift32 seed              */
+
+/* --- Sprites -------------------------------------------------------------- */
+static const uint16_t spaceShip[] = {
+    0,     0,     0,     0,     0,     34882, 34882, 0,     0,     0,     0,
+    0,     0,     0,     0,     0,     34882, 37012, 37012, 54701, 0,     0,
+    0,     0,     0,     0,     0,     0,     12692, 33585, 33585, 28820, 0,
+    0,     0,     0,     0,     0,     0,     9521,  41769, 61181, 61181, 41769,
+    42818, 0,     0,     0,     0,     0,     0,     10058, 49961, 18138, 18138,
+    41769, 52595, 0,     0,     0,     0,     0,     21933, 52067, 49961, 18138,
+    18138, 49961, 28292, 21933, 0,     0,     63414, 28820, 49961, 28027, 41769,
+    41769, 41769, 41769, 19299, 41769, 37012, 63670, 35154, 37012, 49961, 28027,
+    28820, 37012, 37012, 37012, 19299, 41769, 37012, 35154, 0,     35154, 41769,
+    27755, 37012, 35154, 35154, 37012, 28292, 41769, 35154, 0,     0,     0,
+    34361, 34361, 34369, 47302, 47302, 34882, 34361, 34361, 0,     0,     0,
+    0,     0,     0,     34369, 34882, 33577, 34882, 0,     0,     0,     0,
+    0,     0,     0,     0,     0,     45196, 21933, 0,     0,     0,     0,
+    0,
+};
+
+static const uint16_t blueAlienBoth[][88] = {
+    {0,     0,     41187, 0,     0,     0,     0,     0,     41187, 0,
+     0,     41187, 0,     0,     41187, 0,     0,     0,     41187, 0,
+     0,     41187, 41187, 0,     41187, 41187, 41187, 41187, 41187, 41187,
+     41187, 0,     41187, 41187, 41187, 41187, 0,     41187, 41187, 41187,
+     0,     41187, 41187, 41187, 41187, 41187, 41187, 41187, 41187, 41187,
+     41187, 41187, 41187, 41187, 41187, 0,     41187, 41187, 41187, 41187,
+     41187, 41187, 41187, 41187, 41187, 0,     0,     0,     41187, 0,
+     0,     0,     0,     0,     41187, 0,     0,     0,     41187, 0,
+     0,     0,     0,     0,     0,     0,     41187, 0},
+    {0,     0,     41187, 0,     0,     0,     0,     0,     41187, 0,
+     0,     0,     0,     0,     41187, 0,     0,     0,     41187, 0,
+     0,     0,     0,     0,     41187, 41187, 41187, 41187, 41187, 41187,
+     41187, 0,     0,     0,     41187, 41187, 0,     41187, 41187, 41187,
+     0,     41187, 41187, 0,     41187, 41187, 41187, 41187, 41187, 41187,
+     41187, 41187, 41187, 41187, 41187, 41187, 0,     41187, 41187, 41187,
+     41187, 41187, 41187, 41187, 0,     41187, 41187, 0,     41187, 0,
+     0,     0,     0,     0,     41187, 0,     41187, 0,     0,     0,
+     41187, 41187, 0,     41187, 41187, 0,     0,     0}
+};
+
+static const uint16_t redAlien[][88] = {
+    {0,     0,     65320, 0,     0,     0,     0,     0,     65320, 0,
+     0,     0,     0,     0,     65320, 0,     0,     0,     65320, 0,
+     0,     0,     0,     0,     65320, 65320, 65320, 65320, 65320, 65320,
+     65320, 0,     0,     0,     65320, 65320, 0,     65320, 65320, 65320,
+     0,     65320, 65320, 0,     65320, 65320, 65320, 65320, 65320, 65320,
+     65320, 65320, 65320, 65320, 65320, 65320, 0,     65320, 65320, 65320,
+     65320, 65320, 65320, 65320, 0,     65320, 65320, 0,     65320, 0,
+     0,     0,     0,     0,     65320, 0,     65320, 0,     0,     0,
+     65320, 65320, 0,     65320, 65320, 0,     0,     0},
+    {0,     0,     65320, 0,     0,     0,     0,     0,     65320, 0,
+     0,     65320, 0,     0,     65320, 0,     0,     0,     65320, 0,
+     0,     65320, 65320, 0,     65320, 65320, 65320, 65320, 65320, 65320,
+     65320, 0,     65320, 65320, 65320, 65320, 0,     65320, 65320, 65320,
+     0,     65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320,
+     65320, 65320, 65320, 65320, 65320, 0,     65320, 65320, 65320, 65320,
+     65320, 65320, 65320, 65320, 65320, 0,     0,     0,     65320, 0,
+     0,     0,     0,     0,     65320, 0,     0,     0,     65320, 0,
+     0,     0,     0,     0,     0,     0,     65320, 0}
+};
+
+static const uint16_t greenAlien[][88] = {
+    {0,     0,     51975, 0,     0,     0,     0,     0,     51975, 0,
+     0,     51975, 0,     0,     51975, 0,     0,     0,     51975, 0,
+     0,     51975, 51975, 0,     51975, 51975, 51975, 51975, 51975, 51975,
+     51975, 0,     51975, 51975, 51975, 51975, 0,     51975, 51975, 51975,
+     0,     51975, 51975, 51975, 51975, 51975, 51975, 51975, 51975, 51975,
+     51975, 51975, 51975, 51975, 51975, 0,     51975, 51975, 51975, 51975,
+     51975, 51975, 51975, 51975, 51975, 0,     0,     0,     51975, 0,
+     0,     0,     0,     0,     51975, 0,     0,     0,     51975, 0,
+     0,     0,     0,     0,     0,     0,     51975, 0},
+    {0,     0,     51975, 0,     0,     0,     0,     0,     51975, 0,
+     0,     0,     0,     0,     51975, 0,     0,     0,     51975, 0,
+     0,     0,     0,     0,     51975, 51975, 51975, 51975, 51975, 51975,
+     51975, 0,     0,     0,     51975, 51975, 0,     51975, 51975, 51975,
+     0,     51975, 51975, 0,     51975, 51975, 51975, 51975, 51975, 51975,
+     51975, 51975, 51975, 51975, 51975, 51975, 0,     51975, 51975, 51975,
+     51975, 51975, 51975, 51975, 0,     51975, 51975, 0,     51975, 0,
+     0,     0,     0,     0,     51975, 0,     51975, 0,     0,     0,
+     51975, 51975, 0,     51975, 51975, 0,     0,     0}
+};
+
+/* ============================================================================
+ * 4. STM32 HARDWARE SETUP
+ * ============================================================================ */
+void pinMode(GPIO_TypeDef* port, uint32_t pin, uint32_t mode) {
+    uint32_t val = port->MODER;
+    val &= ~(3u << (pin * 2));
+    val |=  (mode << (pin * 2));
+    port->MODER = val;
+}
+
+static void enablePullUp(GPIO_TypeDef* port, uint32_t pin) {
+    port->PUPDR &= ~(3u << (pin * 2));
+    port->PUPDR |=  (1u << (pin * 2));
+}
+
+static void initClock(void) {
+    RCC->CR &= ~(1u << 24);
+    while (RCC->CR & (1 << 25));
+    FLASH->ACR |=  (1 << 0);
+    FLASH->ACR &= ~((1u << 2) | (1u << 1));
+    FLASH->ACR |=  (1 << 4);
+    RCC->CFGR &= ~((1u<<21)|(1u<<20)|(1u<<19)|(1u<<18));
+    RCC->CFGR |=  ((1<<21)|(1<<19));
+    RCC->CFGR |=  (1 << 14);
+    RCC->CR   |=  (1 << 24);
+    RCC->CFGR |=  (1 << 1);
+}
+
+static void initSysTick(void) {
+    SysTick->LOAD = 48000;
+    SysTick->CTRL = 7;
+    SysTick->VAL  = 10;
+    __asm(" cpsie i ");
+}
+
+void SysTick_Handler(void) { milliseconds++; }
+
+static void setupIO(void) {
+    RCC->AHBENR |= (1 << 18) | (1 << 17);
+    display_begin();
+    pinMode(GPIOB, 4,  0);  enablePullUp(GPIOB, 4);
+    pinMode(GPIOB, 5,  0);  enablePullUp(GPIOB, 5);
+    pinMode(GPIOA, 8,  0);  enablePullUp(GPIOA, 8);
+    pinMode(GPIOA, 11, 0);  enablePullUp(GPIOA, 11);
+}
+
+void delay(volatile uint32_t ms) {
+    uint32_t end = ms + milliseconds;
+    while (milliseconds != end) __asm(" wfi ");
+}
+
+/* --- RNG ------------------------------------------------------------------ */
+static uint32_t xorshift32(void) {
+    rngState ^= rngState << 13;
+    rngState ^= rngState >> 17;
+    rngState ^= rngState << 5;
+    return rngState;
+}
+
+/* Returns 1 with probability 1/threshold – tune threshold to control fire rate */
+static uint8_t shouldFire(uint8_t threshold) {
+    return (xorshift32() % threshold) == 0;
+}
+
+int isInside(uint16_t x1, uint16_t y1, uint16_t w, uint16_t h,
+             uint16_t px, uint16_t py) {
+    return (px >= x1 && px <= x1+w && py >= y1 && py <= y1+h) ? 1 : 0;
+}
+
+/* ============================================================================
+ * 5. GAME INIT
+ * ============================================================================ */
+
+/*
+ * parkAlienBullet – resets one alien bullet to its parked position
+ * (muzzle of the bottom-most alive alien in that column).
+ * If column is fully dead the bullet stays READY at last position.
+ */
+static void parkAlienBullet(int col) {
+    AlienGrid* ag = &gs.aliens;
+    Bullet*    b  = &ag->ab[col];
+
+    /* Find bottom-most alive alien in this column */
+    int row = -1;
+    for (int i = ALIEN_ROWS - 1; i >= 0; i--) {
+        if (ag->status[i][col] == 0) { row = i; break; }
+    }
+
+    if (row == -1) {
+        /* Column fully dead – disable bullet */
+        b->state = BULLET_READY;
+        return;
+    }
+
+    b->coords.x = b->coords.oldX =
+        (uint16_t)(ag->offsetX + ag->basePosX[col] + BULLET_OFFSET_X);
+    b->coords.y = b->coords.oldY =
+        (uint16_t)(ag->offsetY + ag->basePosY[row] + ALIEN_H);
+    b->speed = BULLET_SPEED;
+    b->state = BULLET_READY;
+}
+
+static void initAlienGrid(void) {
+    AlienGrid* ag = &gs.aliens;
+    ag->offsetX    = ag->oldOffsetX = ALIEN_ORIGIN_X;
+    ag->offsetY    = ag->oldOffsetY = ALIEN_ORIGIN_Y;
+    ag->dirX       = 1;
+    ag->earToggle  = 0;
+    ag->lastMoveTime = 0;
+
+    for (int i = 0; i < ALIEN_ROWS; i++)
+        ag->basePosY[i] = (uint16_t)(i * (ALIEN_H + ALIEN_GAP_Y));
+    for (int j = 0; j < ALIEN_COLS; j++)
+        ag->basePosX[j] = (uint16_t)(j * (ALIEN_W + ALIEN_GAP_X));
+
+    for (int i = 0; i < ALIEN_ROWS; i++)
+        for (int j = 0; j < ALIEN_COLS; j++)
+            ag->status[i][j] = 0;
+
+    /* Park all alien bullets at their column muzzles */
+    for (int j = 0; j < ALIEN_COLS; j++)
+        parkAlienBullet(j);
+}
+
+static void initGameState(void) {
+    rngState = milliseconds | 1;          /* seed must be non-zero        */
+
+    gs.ship.coords.x = gs.ship.coords.oldX = 58;
+    gs.ship.coords.y = gs.ship.coords.oldY = 130;
+    gs.ship.speed    = SHIP_SPEED;
+
+    gs.bullet.coords.x = gs.bullet.coords.oldX =
+        gs.ship.coords.x + BULLET_OFFSET_X;
+    gs.bullet.coords.y = gs.bullet.coords.oldY =
+        gs.ship.coords.y - BULLET_OFFSET_Y;
+    gs.bullet.speed = BULLET_SPEED;
+    gs.bullet.state = BULLET_READY;
+
+    initAlienGrid();
+}
+
+/* ============================================================================
+ * 6. INPUT
+ * ============================================================================ */
+static void handleInput(void) {
+    if ((GPIOB->IDR & (1 << 4)) == 0) {
+        if (gs.ship.coords.x < SHIP_MAX_X)
+            gs.ship.coords.x += gs.ship.speed;
+    }
+    if ((GPIOB->IDR & (1 << 5)) == 0) {
+        if (gs.ship.coords.x > SHIP_MIN_X)
+            gs.ship.coords.x -= gs.ship.speed;
+    }
+    if ((GPIOA->IDR & (1 << 8)) == 0) {
+        if (gs.bullet.state == BULLET_READY)
+            gs.bullet.state = BULLET_FIRE;
+    }
+}
+
+/* ============================================================================
+ * 7. ALIEN MOVEMENT
+ * ============================================================================ */
+static int isAlienGridEmpty(void) {
+    for (int i = 0; i < ALIEN_ROWS; i++)
+        for (int j = 0; j < ALIEN_COLS; j++)
+            if (gs.aliens.status[i][j] == 0) return 0;
+    return 1;
+}
+
+/*
+ * moveAliens – rate-limited to ALIEN_MOVE_MS.
+ * On each tick:
+ *   - earToggle flips for sprite animation
+ *   - grid steps horizontally, or drops + reverses on wall hit
+ *   - on wall hit, each column randomly decides to fire
+ *   - alien bullet parked positions are updated to follow the grid
+ */
+static void moveAliens(uint32_t now) {
+    AlienGrid* ag = &gs.aliens;
+
+    if (now - ag->lastMoveTime < ALIEN_MOVE_MS) return;
+    ag->lastMoveTime = now;
+
+    if (isAlienGridEmpty()) { initAlienGrid(); return; }
+
+    ag->oldOffsetX = ag->offsetX;
+    ag->oldOffsetY = ag->offsetY;
+    ag->earToggle  = !ag->earToggle;
+
+    int16_t nextX = ag->offsetX + (ALIEN_STEP * ag->dirX);
+
+    if (nextX < ALIEN_MIN_X || nextX > ALIEN_MAX_X) {
+        ag->offsetY += ALIEN_DROP;
+        ag->dirX    *= -1;
+
+        /* Random fire on wall hit – each column independently */
+        for (int j = 0; j < ALIEN_COLS; j++) {
+            if (ag->ab[j].state == BULLET_READY && shouldFire(3))
+                ag->ab[j].state = BULLET_FIRE;
+        }
+    } else {
+        ag->offsetX = nextX;
+    }
+
+    /* Update parked bullets to track the moving grid */
+    for (int j = 0; j < ALIEN_COLS; j++) {
+        if (ag->ab[j].state == BULLET_READY)
+            parkAlienBullet(j);
+    }
+}
+
+/* ============================================================================
+ * 8. COLLISION
+ * ============================================================================ */
+static int checkCollision(uint16_t o1X, uint16_t o1Y, uint16_t o1w, uint16_t o1h,
+                           uint16_t o2X, uint16_t o2Y, uint16_t o2w, uint16_t o2h) {
+    if (o1X + o1w <= o2X) return 0;
+    if (o1X >= o2X + o2w) return 0;
+    if (o1Y + o1h <= o2Y) return 0;
+    if (o1Y >= o2Y + o2h) return 0;
+    return 1;
+}
+
+/* --- Player bullet reset -------------------------------------------------- */
+static void resetPlayerBullet(void) {
+    Bullet* b = &gs.bullet;
+    /* Erase both current and old position to handle the one-frame lag */
+    fillRectangle(b->coords.x,    b->coords.y,    BULLET_W, BULLET_H, 0);
+    fillRectangle(b->coords.oldX, b->coords.oldY, BULLET_W, BULLET_H, 0);
+    b->coords.x = b->coords.oldX = gs.ship.coords.x + BULLET_OFFSET_X;
+    b->coords.y = b->coords.oldY = gs.ship.coords.y - BULLET_OFFSET_Y;
+    b->state = BULLET_READY;
+}
+
+/* --- Alien bullet reset --------------------------------------------------- */
+static void resetAlienBullet(int col) {
+    AlienGrid* ag = &gs.aliens;
+    Bullet*    b  = &ag->ab[col];
+    /* Erase both positions */
+    fillRectangle(b->coords.x,    b->coords.y,    BULLET_W, BULLET_H, 0);
+    fillRectangle(b->coords.oldX, b->coords.oldY, BULLET_W, BULLET_H, 0);
+    parkAlienBullet(col);
+}
+
+/*
+ * repairAliensUnderRect – after erasing a rect (rx,ry,rw,rh) to black,
+ * redraw any alive alien whose bounding box overlaps it.
+ * Full 11×8 redraw per alien – one aperture, cheaper than partial repair.
+ */
+static void repairAliensUnderRect(uint16_t rx, uint16_t ry,
+                                   uint16_t rw, uint16_t rh) {
+    AlienGrid* ag = &gs.aliens;
+    for (int i = 0; i < ALIEN_ROWS; i++) {
+        for (int j = 0; j < ALIEN_COLS; j++) {
+            if (ag->status[i][j] != 0) continue;
+            uint16_t ax = (uint16_t)(ag->offsetX + ag->basePosX[j]);
+            uint16_t ay = (uint16_t)(ag->offsetY + ag->basePosY[i]);
+            if (checkCollision(ax, ay, ALIEN_W, ALIEN_H, rx, ry, rw, rh)) {
+                /* Which sprite to use for this row */
+                const uint16_t* spr =
+                    (i == 0) ? redAlien[ag->earToggle]      :
+                    (i == 1) ? greenAlien[ag->earToggle]    :
+                               blueAlienBoth[ag->earToggle];
+                putImage(ax, ay, ALIEN_W, ALIEN_H, spr, 1, 0);
+            }
+        }
+    }
+}
+
+/* --- Player bullet vs alien grid ----------------------------------------- */
+static void updatePlayerCollision(void) {
+    if (gs.bullet.state != BULLET_FIRE) return;
+
+    AlienGrid* ag = &gs.aliens;
+    for (int i = 0; i < ALIEN_ROWS; i++) {
+        for (int j = 0; j < ALIEN_COLS; j++) {
+            if (ag->status[i][j] != 0) continue;
+            uint16_t ax = (uint16_t)(ag->offsetX + ag->basePosX[j]);
+            uint16_t ay = (uint16_t)(ag->offsetY + ag->basePosY[i]);
+            if (checkCollision(ax, ay, ALIEN_W, ALIEN_H,
+                               gs.bullet.coords.x, gs.bullet.coords.y,
+                               BULLET_W, BULLET_H)) {
+                fillRectangle(ax, ay, ALIEN_W, ALIEN_H, 0);
+                ag->status[i][j] = 1;
+                /* Park the alien bullet for this column (shooter is dead) */
+                resetAlienBullet(j);
+                resetPlayerBullet();
+                return;
+            }
+        }
+    }
+}
+
+/* --- Alien bullets vs ship ----------------------------------------------- */
+static void updateAlienBulletCollision(void) {
+    AlienGrid* ag = &gs.aliens;
+    for (int j = 0; j < ALIEN_COLS; j++) {
+        Bullet* b = &ag->ab[j];
+        if (b->state != BULLET_FIRE) continue;
+        if (checkCollision(gs.ship.coords.x, gs.ship.coords.y, SHIP_W, SHIP_H,
+                           b->coords.x, b->coords.y, BULLET_W, BULLET_H)) {
+            resetAlienBullet(j);
+            /* Caller (main loop) will detect ship hit and call resetGame */
+        }
+    }
+}
+
+/* --- Game-over checks ----------------------------------------------------- */
+static uint16_t getLowestAlienY(void) {
+    AlienGrid* ag = &gs.aliens;
+    for (int i = ALIEN_ROWS - 1; i >= 0; i--)
+        for (int j = 0; j < ALIEN_COLS; j++)
+            if (ag->status[i][j] == 0)
+                return (uint16_t)(ag->offsetY + ag->basePosY[i] + ALIEN_H);
+    return 0;
+}
+
+static int checkGameOver(void) {
+    uint16_t lowestY = getLowestAlienY();
+    if (lowestY == 0) return 0;
+
+    /* Aliens reached HUD line */
+    if (lowestY >= HUD_LINE_Y) return 1;
+
+    /* Any alien overlaps ship */
+    AlienGrid* ag = &gs.aliens;
+    for (int i = 0; i < ALIEN_ROWS; i++) {
+        for (int j = 0; j < ALIEN_COLS; j++) {
+            if (ag->status[i][j] != 0) continue;
+            uint16_t ax = (uint16_t)(ag->offsetX + ag->basePosX[j]);
+            uint16_t ay = (uint16_t)(ag->offsetY + ag->basePosY[i]);
+            if (checkCollision(ax, ay, ALIEN_W, ALIEN_H,
+                               gs.ship.coords.x, gs.ship.coords.y,
+                               SHIP_W, SHIP_H)) return 1;
+        }
+    }
+
+    /* Any alien bullet hit the ship */
+    AlienGrid* ag2 = &gs.aliens;
+    for (int j = 0; j < ALIEN_COLS; j++) {
+        Bullet* b = &ag2->ab[j];
+        if (b->state != BULLET_FIRE) continue;
+        if (checkCollision(gs.ship.coords.x, gs.ship.coords.y, SHIP_W, SHIP_H,
+                           b->coords.x, b->coords.y, BULLET_W, BULLET_H))
+            return 1;
+    }
+
+    return 0;
+}
+
+/* ============================================================================
+ * 9. RENDER
+ * ============================================================================ */
+
+/* Full alien grid – startup, reset, and after every move tick */
+static void renderAliens(void) {
+    AlienGrid* ag = &gs.aliens;
+
+    if (ag->offsetX == ag->oldOffsetX && ag->offsetY == ag->oldOffsetY) return;
+
+    /* Erase full old bounding box */
+    fillRectangle((uint16_t)ag->oldOffsetX, (uint16_t)ag->oldOffsetY,
+                  ALIEN_GRID_W, ALIEN_GRID_H, 0);
+
+    /* Blit alive aliens at new positions */
+    for (int i = 0; i < ALIEN_ROWS; i++) {
+        for (int j = 0; j < ALIEN_COLS; j++) {
+            if (ag->status[i][j] != 0) continue;
+            uint16_t ax = (uint16_t)(ag->offsetX + ag->basePosX[j]);
+            uint16_t ay = (uint16_t)(ag->offsetY + ag->basePosY[i]);
+            const uint16_t* spr =
+                (i == 0) ? redAlien[ag->earToggle]      :
+                (i == 1) ? greenAlien[ag->earToggle]    :
+                           blueAlienBoth[ag->earToggle];
+            putImage(ax, ay, ALIEN_W, ALIEN_H, spr, 1, 0);
+        }
+    }
+
+    ag->oldOffsetX = ag->offsetX;
+    ag->oldOffsetY = ag->offsetY;
+}
+
+/* Dirty-rect ship */
+static void renderShip(void) {
+    if (gs.ship.coords.oldX == gs.ship.coords.x &&
+        gs.ship.coords.oldY == gs.ship.coords.y) return;
+
+    int16_t dx = (int16_t)gs.ship.coords.x - gs.ship.coords.oldX;
+    if (dx > 0)
+        fillRectangle(gs.ship.coords.oldX, gs.ship.coords.oldY,
+                      (uint16_t)dx, SHIP_H, 0);
+    else if (dx < 0)
+        fillRectangle(gs.ship.coords.x + SHIP_W, gs.ship.coords.oldY,
+                      (uint16_t)(-dx), SHIP_H, 0);
+
+    gs.ship.coords.oldX = gs.ship.coords.x;
+    gs.ship.coords.oldY = gs.ship.coords.y;
+    putImage(gs.ship.coords.x, gs.ship.coords.y, SHIP_W, SHIP_H, spaceShip, 1, 0);
+}
+
+/* Player bullet – tail-strip erase */
+static void renderPlayerBullet(void) {
+    if (gs.bullet.state != BULLET_FIRE) return;
+    Bullet* b = &gs.bullet;
+    fillRectangle(b->coords.oldX, b->coords.oldY + BULLET_H,
+                  BULLET_W, b->speed, 0);
+    b->coords.oldX = b->coords.x;
+    b->coords.oldY = b->coords.y;
+    fillRectangle(b->coords.x, b->coords.y, BULLET_W, BULLET_H, BULLET_COLOR);
+}
+
+/*
+ * renderAlienBullets – for each in-flight alien bullet:
+ *   1. Erase old position
+ *   2. Repair any alien pixels the erase blacked out
+ *   3. Draw new position
+ */
+static void renderAlienBullets(void) {
+    AlienGrid* ag = &gs.aliens;
+    for (int j = 0; j < ALIEN_COLS; j++) {
+        Bullet* b = &ag->ab[j];
+        if (b->state != BULLET_FIRE) continue;
+
+        /* 1. Erase old position */
+        fillRectangle(b->coords.oldX, b->coords.oldY, BULLET_W, BULLET_H, 0);
+
+        /* 2. Repair aliens whose pixels the erase may have destroyed */
+        repairAliensUnderRect(b->coords.oldX, b->coords.oldY,
+                              BULLET_W, BULLET_H);
+
+        /* 3. Draw bullet at new position */
+        b->coords.oldX = b->coords.x;
+        b->coords.oldY = b->coords.y;
+        fillRectangle(b->coords.x, b->coords.y,
+                      BULLET_W, BULLET_H, ALIEN_BULLET_COLOR);
+    }
+}
+
+static void renderScene(void) {
+    renderAliens();
+    renderShip();
+    renderPlayerBullet();
+    renderAlienBullets();
+}
+
+/* ============================================================================
+ * 10. GAME RESET
+ * ============================================================================ */
+static void resetGame(void) {
+    fillRectangle(0, 0, SCREEN_W, HUD_LINE_Y, 0);
+    initGameState();
+    /* Force renderAliens to draw on next call by dirtying oldOffset */
+    gs.aliens.oldOffsetX = gs.aliens.offsetX - 1;
+    renderAliens();
+    putImage(gs.ship.coords.x, gs.ship.coords.y, SHIP_W, SHIP_H, spaceShip, 1, 0);
+}
+
+/* ============================================================================
+ * 11. MAIN
+ * ============================================================================ */
+int main(void) {
+    initClock();
+    initSysTick();
+    setupIO();
+    initSound();
+    initSerial();
+    initGameState();
+
+    /* Initial draw */
+    gs.aliens.oldOffsetX = gs.aliens.offsetX - 1;   /* dirty flag for first draw */
+    renderAliens();
+    putImage(gs.ship.coords.x, gs.ship.coords.y, SHIP_W, SHIP_H, spaceShip, 1, 0);
+    drawLine(0, HUD_LINE_Y, SCREEN_W, HUD_LINE_Y, HUD_LINE_COLOR);
+
+    while (1) {
+        uint32_t now = milliseconds;
+        if (now - lastUpdate < FRAME_DELAY) continue;
+        lastUpdate = now;
+
+        /* --- Advance player bullet --- */
+        if (gs.bullet.state == BULLET_FIRE) {
+            gs.bullet.coords.y -= gs.bullet.speed;
+            if (gs.bullet.coords.y < 5)
+                resetPlayerBullet();
+        } else {
+            gs.bullet.coords.x = gs.ship.coords.x + BULLET_OFFSET_X;
+            gs.bullet.coords.y = gs.ship.coords.y - BULLET_OFFSET_Y;
+        }
+
+        /* --- Advance alien bullets --- */
+        AlienGrid* ag = &gs.aliens;
+        for (int j = 0; j < ALIEN_COLS; j++) {
+            Bullet* b = &ag->ab[j];
+            if (b->state == BULLET_FIRE) {
+                b->coords.y += b->speed;           /* alien bullets go DOWN */
+                if (b->coords.y > HUD_LINE_Y)
+                    resetAlienBullet(j);
+            }
+            /* READY bullets track the grid in moveAliens/parkAlienBullet */
+        }
+
+        handleInput();                 /* buttons        -> positions      */
+        moveAliens(now);               /* timer          -> grid shift     */
+        updatePlayerCollision();       /* player bullet  -> alien grid     */
+        updateAlienBulletCollision();  /* alien bullets  -> ship           */
+
+        if (checkGameOver()) {
+            resetGame();
+            continue;
+        }
+
+        renderScene();
+    }
+
+    return 0;
+}
