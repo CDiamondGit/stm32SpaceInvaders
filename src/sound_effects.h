@@ -4,5 +4,5 @@
 #include <stdint.h>
 void playNote(uint32_t Freq);
 void initSound(void);
-void twinkle_twinkle(void);
+void stopSound(void);
 #endif
