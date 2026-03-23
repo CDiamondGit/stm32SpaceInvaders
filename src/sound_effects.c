@@ -6,7 +6,6 @@ void pinMode(GPIO_TypeDef *Port, uint32_t BitNumber, uint32_t Mode);
 void initSound(void);
 void playNote(uint32_t freq);
 void stopSound(void);
-void twinkle_twinkle(void);
 
 void initSound(void)
 {
@@ -36,57 +35,4 @@ void playNote(uint32_t freq)
 void stopSound(void)
 {
     TIM14->CR1 &= ~TIM_CR1_CEN;  // disable timer
-}
-
-void twinkle_twinkle(void)
-{
-    playNote(C4); delay(250);
-    playNote(C4); delay(250);
-    playNote(G4); delay(250);
-    playNote(G4); delay(250);
-    playNote(A4); delay(250);
-    playNote(A4); delay(250);
-    playNote(G4); delay(500);
-
-    playNote(F4); delay(250);
-    playNote(F4); delay(250);
-    playNote(E4); delay(250);
-    playNote(E4); delay(250);
-    playNote(D4); delay(250);
-    playNote(D4); delay(250);
-    playNote(C4); delay(500);
-
-    playNote(G4); delay(250);
-    playNote(G4); delay(250);
-    playNote(F4); delay(250);
-    playNote(F4); delay(250);
-    playNote(E4); delay(250);
-    playNote(E4); delay(250);
-    playNote(D4); delay(500);
-
-    playNote(G4); delay(250);
-    playNote(G4); delay(250);
-    playNote(F4); delay(250);
-    playNote(F4); delay(250);
-    playNote(E4); delay(250);
-    playNote(E4); delay(250);
-    playNote(D4); delay(500);
-
-    playNote(C4); delay(250);
-    playNote(C4); delay(250);
-    playNote(G4); delay(250);
-    playNote(G4); delay(250);
-    playNote(A4); delay(250);
-    playNote(A4); delay(250);
-    playNote(G4); delay(500);
-
-    playNote(F4); delay(250);
-    playNote(F4); delay(250);
-    playNote(E4); delay(250);
-    playNote(E4); delay(250);
-    playNote(D4); delay(250);
-    playNote(D4); delay(250);
-    playNote(C4); delay(600);
-
-    stopSound();
 }
