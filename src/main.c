@@ -854,7 +854,7 @@ static void updatePlayerCollision(void) {
         fillRectangle(ax, ay, ALIEN_W, ALIEN_H, 0);
         ag->status[i][j] = 1;
         start_sound_effect(explode_notes, explode_times, explode_note_count, 0);
-        // resetBullet(); 
+        
         /* Park the alien bullet for this column (shooter is dead) */
         resetAlienBullet(j);
         resetPlayerBullet();
