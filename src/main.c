@@ -7,12 +7,9 @@
 #include "display.h"
 #include "musical_notes.h"
 #include "serial.h"
-<<<<<<< HEAD
 #include <stdint.h>
 #include <stdio.h>
-=======
 #include "sound_effects.h"
->>>>>>> main
 
 /* --- Screen --------------------------------------------------------------- */
 #define SCREEN_W 128
@@ -137,7 +134,6 @@ const uint32_t explode_notes[] = {F4, D4, C4, A3, F3, D3, C3, A2, F2, D2, C2};
 const uint32_t explode_times[] = {25, 25, 30, 30, 35, 40, 40, 45, 45, 50, 60};
 const uint32_t explode_note_count = 11;
 
-<<<<<<< HEAD
 typedef enum  {
   MAINMENU,
   PLAYING,
@@ -156,14 +152,6 @@ void start_sound_effect(const uint32_t notes[],const uint32_t times[],uint32_t c
   if (count == 0)
   {
         return;
-=======
-void start_sound_effect(const uint32_t notes[],
-                        const uint32_t times[],
-                        uint32_t count,
-                        uint32_t repeat) {
-  if (count == 0) {
-    return;
->>>>>>> main
   }
   __disable_irq();
   current_tune_notes = notes;
@@ -857,11 +845,7 @@ static void updatePlayerCollision(void) {
         fillRectangle(ax, ay, ALIEN_W, ALIEN_H, 0);
         ag->status[i][j] = 1;
         start_sound_effect(explode_notes, explode_times, explode_note_count, 0);
-<<<<<<< HEAD
         
-=======
-        // resetBullet();
->>>>>>> main
         /* Park the alien bullet for this column (shooter is dead) */
         resetAlienBullet(j);
         resetPlayerBullet();
