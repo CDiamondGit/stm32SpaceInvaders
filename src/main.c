@@ -5,11 +5,14 @@
 #include <stdbool.h>
 #include <stm32f031x6.h>
 #include "display.h"
-#include "sound_effects.h"
 #include "musical_notes.h"
 #include "serial.h"
+<<<<<<< HEAD
 #include <stdint.h>
 #include <stdio.h>
+=======
+#include "sound_effects.h"
+>>>>>>> main
 
 /* --- Screen --------------------------------------------------------------- */
 #define SCREEN_W 128
@@ -118,22 +121,23 @@ typedef struct {
 } GameState;
 
 /* --- Temporary location for sound code until main.c is cleaned up --------- */
-volatile const uint32_t *current_tune_notes = 0;
-volatile const uint32_t *current_tune_times = 0;
+volatile const uint32_t* current_tune_notes = 0;
+volatile const uint32_t* current_tune_times = 0;
 volatile uint32_t current_tune_note_count = 0;
 volatile uint32_t current_repeat_tune = 0;
 volatile uint32_t current_note_index = 0;
 volatile int32_t current_note_timer = 0;
 volatile uint32_t milliseconds = 0;
 
-const uint32_t shoot_notes[] = {C4,A3,C4};
-const uint32_t shoot_times[] = {60,80,60};
+const uint32_t shoot_notes[] = {C4, A3, C4};
+const uint32_t shoot_times[] = {60, 80, 60};
 const uint32_t shoot_note_count = 3;
 
-const uint32_t explode_notes[] = {F4,D4,C4,A3,F3,D3,C3,A2,F2,D2,C2};
-const uint32_t explode_times[] = {25,25,30,30,35,40,40,45,45,50,60};
+const uint32_t explode_notes[] = {F4, D4, C4, A3, F3, D3, C3, A2, F2, D2, C2};
+const uint32_t explode_times[] = {25, 25, 30, 30, 35, 40, 40, 45, 45, 50, 60};
 const uint32_t explode_note_count = 11;
 
+<<<<<<< HEAD
 typedef enum  {
   MAINMENU,
   PLAYING,
@@ -152,6 +156,14 @@ void start_sound_effect(const uint32_t notes[],const uint32_t times[],uint32_t c
   if (count == 0)
   {
         return;
+=======
+void start_sound_effect(const uint32_t notes[],
+                        const uint32_t times[],
+                        uint32_t count,
+                        uint32_t repeat) {
+  if (count == 0) {
+    return;
+>>>>>>> main
   }
   __disable_irq();
   current_tune_notes = notes;
@@ -160,48 +172,40 @@ void start_sound_effect(const uint32_t notes[],const uint32_t times[],uint32_t c
   current_repeat_tune = repeat;
   current_note_index = 0;
   current_note_timer = current_tune_times[0];
-  
+
   playNote(current_tune_notes[0]);
   __enable_irq();
 }
 
-void SysTick_Handler(void)
-{
-    milliseconds++;
+void SysTick_Handler(void) {
+  milliseconds++;
 
-    if (current_tune_notes != 0)
-    {
-        if (current_note_timer > 0)
-        {
-            current_note_timer--;
-        }
-
-        if (current_note_timer == 0)
-        {
-            current_note_index++;
-
-            if (current_note_index >= current_tune_note_count)
-            {
-                if (current_repeat_tune == 0)
-                {
-                    current_tune_notes = 0;
-                    current_tune_times = 0;
-                    current_tune_note_count = 0;
-                    current_note_index = 0;
-                    current_note_timer = 0;
-                    stopSound();
-                    return;
-                }
-                else
-                {
-                    current_note_index = 0;
-                }
-            }
-
-            current_note_timer = current_tune_times[current_note_index];
-            playNote(current_tune_notes[current_note_index]);
-        }
+  if (current_tune_notes != 0) {
+    if (current_note_timer > 0) {
+      current_note_timer--;
     }
+
+    if (current_note_timer == 0) {
+      current_note_index++;
+
+      if (current_note_index >= current_tune_note_count) {
+        if (current_repeat_tune == 0) {
+          current_tune_notes = 0;
+          current_tune_times = 0;
+          current_tune_note_count = 0;
+          current_note_index = 0;
+          current_note_timer = 0;
+          stopSound();
+          return;
+        } else {
+          current_note_index = 0;
+        }
+      }
+
+      current_note_timer = current_tune_times[current_note_index];
+      playNote(current_tune_notes[current_note_index]);
+    }
+  }
 }
 
 /*
@@ -619,8 +623,7 @@ static void parkAlienBullet(int col) {
 
   /* Fire – PA8 */
   if ((GPIOA->IDR & (1 << 8)) == 0) {
-    if (gs.bullet.state == BULLET_READY)
-    {
+    if (gs.bullet.state == BULLET_READY) {
       gs.bullet.state = BULLET_FIRE;
       start_sound_effect(shoot_notes, shoot_times, shoot_note_count, 0);
     }
@@ -854,7 +857,11 @@ static void updatePlayerCollision(void) {
         fillRectangle(ax, ay, ALIEN_W, ALIEN_H, 0);
         ag->status[i][j] = 1;
         start_sound_effect(explode_notes, explode_times, explode_note_count, 0);
+<<<<<<< HEAD
         
+=======
+        // resetBullet();
+>>>>>>> main
         /* Park the alien bullet for this column (shooter is dead) */
         resetAlienBullet(j);
         resetPlayerBullet();
@@ -910,14 +917,14 @@ static int checkGameOver(void) {
  */
 
 /*
-  * renderAliens – full grid redraw.
-  * Used at startup, level reset, and after every move tick.
-  *
-  * On a move tick the dirty-strip strategy is used:
-  *   1. Erase the vacated edge strip (one fillRectangle call).
-  *   2. Blit only alive aliens – dead cells stay black automatically
-  *      because the strip erase already cleared them.
-  */
+ * renderAliens – full grid redraw.
+ * Used at startup, level reset, and after every move tick.
+ *
+ * On a move tick the dirty-strip strategy is used:
+ *   1. Erase the vacated edge strip (one fillRectangle call).
+ *   2. Blit only alive aliens – dead cells stay black automatically
+ *      because the strip erase already cleared them.
+ */
 
 static void renderAliens(void) {
   AlienGrid* ag = &gs.aliens;
