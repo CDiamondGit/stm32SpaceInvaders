@@ -33,7 +33,7 @@
 /* --- Alien grid ----------------------------------------------------------- */
 #define ALIEN_W 11
 #define ALIEN_H 8
-#define ALIEN_ROWS 4
+#define ALIEN_ROWS 3
 #define ALIEN_COLS 5
 #define ALIEN_GAP_X 11    /* horizontal gap between aliens          */
 #define ALIEN_GAP_Y 5     /* vertical gap between aliens            */
@@ -52,7 +52,7 @@
 /* How many pixels the grid shifts per move tick, and ms between ticks */
 #define ALIEN_STEP 5
 #define ALIEN_MOVE_MS \
-  600 /* decrease speeds up alien and increase to slow down          */
+  1000 /* decrease speeds up alien and increase to slow down          */
 
 /* Drop distance when hitting a wall (one alien row + gap) */
 #define ALIEN_DROP (ALIEN_H + ALIEN_GAP_Y)
@@ -113,6 +113,7 @@ typedef struct {
   Ship ship;
   Bullet bullet;
   AlienGrid aliens;
+  int lives;
 } GameState;
 
 /* --- Temporary location for sound code until main.c is cleaned up --------- */
@@ -274,6 +275,16 @@ static const uint16_t greenAlien[][88] = {
         51975, 51975, 0,     51975, 51975, 0,     0,     0,
     }};
 
+static const uint16_t explosion[88] = {
+    0,    0,     0,     0,     0,     0,     21809, 2105,  1073,  2105,  0,
+    2105, 61747, 53562, 21809, 53562, 61747, 15139, 15139, 2105,  2105,  2105,
+    0,    1073,  21809, 32158, 15139, 64354, 24375, 7013,  24375, 2105,  2105,
+    0,    15139, 7013,  15139, 24375, 32158, 24375, 7013,  64354, 53562, 0,
+    0,    61747, 7013,  7013,  24375, 24375, 24375, 15139, 7013,  53562, 0,
+    0,    15139, 15139, 21809, 15139, 15139, 7013,  7013,  21809, 11313, 0,
+    0,    0,     0,     7013,  61747, 7013,  32158, 64354, 11313, 0,     0,
+    0,    0,     0,     53562, 1073,  21809, 61747, 2105,  0,     0,     0};
+
 /*
  * 4. STM32 HARDWARE SETUP
  *
@@ -434,6 +445,8 @@ static void initAlienGrid() {
 
 static void initGameState(void) {
   randState = milliseconds;
+
+  gs.lives = 3;
 
   /* Ship */
   gs.ship.coords.x = gs.ship.coords.oldX = 58;
@@ -702,7 +715,10 @@ static void updatePlayerCollision(void) {
 
       if (checkCollision(ax, ay, ALIEN_W, ALIEN_H, gs.bullet.coords.x,
                          gs.bullet.coords.y, BULLET_W, BULLET_H)) {
+        putImage(ax, ay, ALIEN_W, ALIEN_H, explosion, 1, 0);
+        delay(50);
         fillRectangle(ax, ay, ALIEN_W, ALIEN_H, 0);
+
         ag->status[i][j] = 1;
         start_sound_effect(explode_notes, explode_times, explode_note_count, 0);
         // resetBullet();
@@ -885,6 +901,7 @@ static void resetGame(void) {
   /* Redraw the initial scene */
   renderAliens();
   putImage(gs.ship.coords.x, gs.ship.coords.y, SHIP_W, SHIP_H, spaceShip, 1, 0);
+  gs.lives -= 1;
   /* HUD line stays – was never erased */
 }
 
@@ -915,6 +932,9 @@ int main(void) {
       continue;
     lastUpdate = now;
 
+    if (gs.lives == 0)
+      return;
+
     /* Advance bullet */
     if (gs.bullet.state == BULLET_FIRE) {
       gs.bullet.coords.y -= gs.bullet.speed;
@@ -941,7 +961,7 @@ int main(void) {
 
     handleInput();   /* buttons-> positions*/
     moveAliens(now); /* now = time, timer-> alien grid shift */
-    updateAlienFire(now);
+    // updateAlienFire(now);
     updatePlayerCollision(); /* bullet    -> alien grid       */
     /*
     TODO :
