@@ -17,10 +17,10 @@ def main():
 	ImageFileName=args[1]
 	im=Image.open(ImageFileName)
 	print(im.format,im.size,im.mode)
+	im = im.convert("RGB")
 	pixels=list(im.getdata())
-	# print(pixels);
 	for px in pixels:
-		print(RGBToWord(px[0],px[1],px[2]),end=',');
+		print(RGBToWord(px[0],px[1],px[2]),end=',')
 	
 if __name__ == "__main__":
 	main()
