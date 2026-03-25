@@ -127,6 +127,20 @@ volatile uint32_t current_note_index = 0;
 volatile int32_t current_note_timer = 0;
 volatile uint32_t milliseconds = 0;
 
+static const uint32_t bg_notes[] = {C4,B3,AS3_Bb3,A3};
+static const uint32_t bg_note_count = 4;
+
+static uint32_t bg_next_change_ms = 0;
+static uint8_t bg_note_index = 0;
+static uint8_t bg_note_on = 0;
+static uint32_t getBackgroundStepMs(void);
+static void startBackgroundBass(void);
+static void stopBackgroundBass(void);
+static void updateBackgroundBass(uint32_t now);
+// const uint32_t dread_notes[] = {C1,B0,AS0_Bb0,A0};
+// const uint32_t dread_times[] = {200,200,200,200};
+// const uint32_t dread_note_count[] = {4};
+
 const uint32_t shoot_notes[] = {C4, A3, C4};
 const uint32_t shoot_times[] = {60, 80, 60};
 const uint32_t shoot_note_count = 3;
@@ -475,6 +489,7 @@ static void parkAlienBullet(int col) {
   
   static void initGameState(void) {
     /* Ship */
+    gs.lives = 3; 
     gs.ship.coords.x = gs.ship.coords.oldX = 58;
     gs.ship.coords.y = gs.ship.coords.oldY = 130;
     gs.ship.speed = SHIP_SPEED;
@@ -1041,6 +1056,7 @@ static void resetGame(void) {
   renderAliens();
   putImage(gs.ship.coords.x, gs.ship.coords.y, SHIP_W, SHIP_H, spaceShip, 1, 0);
   gs.lives -= 1;
+  startBackgroundBass();
   /* HUD line stays – was never erased */
 }
 
@@ -1048,6 +1064,52 @@ static void resetGame(void) {
 
 
   }
+
+  static uint32_t getBackgroundStepMs(void) {
+  uint16_t lowestY = getLowestAlienY();
+  if (lowestY == 0) return 500;
+
+  uint16_t gap = HUD_LINE_Y - lowestY;
+
+  if (gap > 90) return 420;
+  if (gap > 65) return 320;
+  if (gap > 40) return 240;
+  if (gap > 20) return 180;
+  return 130;
+}
+
+static void startBackgroundBass(void) {
+  bg_note_index = 0;
+  bg_note_on = 0;
+  bg_next_change_ms = milliseconds;
+  stopSound2();
+}
+
+static void stopBackgroundBass(void) {
+  stopSound2();
+  bg_note_on = 0;
+}
+
+static void updateBackgroundBass(uint32_t now) {
+  uint32_t step_ms = getBackgroundStepMs();
+
+  if (now < bg_next_change_ms)
+    return;
+
+  bg_next_change_ms = now + step_ms;
+
+  if (bg_note_on) {
+    stopSound2();
+    bg_note_on = 0;
+  } else {
+    playNote2(bg_notes[bg_note_index]);
+    bg_note_index++;
+    if (bg_note_index >= bg_note_count)
+      bg_note_index = 0;
+    bg_note_on = 1;
+  }
+}
+
  void playing(AppState *as) {
                   
   clearDisplay();
@@ -1059,6 +1121,8 @@ static void resetGame(void) {
   renderAliens();
   putImage(gs.ship.coords.x, gs.ship.coords.y, SHIP_W, SHIP_H, spaceShip, 1, 0);
   drawLine(0, HUD_LINE_Y, SCREEN_W, HUD_LINE_Y, HUD_LINE_COLOR);
+
+  startBackgroundBass();
   
   PlayingState currentPlayingState = GAMERUNNING;
   int done =0;
@@ -1106,6 +1170,7 @@ static void resetGame(void) {
     handleInput();   /* buttons-> positions*/
     moveAliens(now); /* now = time, timer-> alien grid shift */
     // updateAlienFire(now);
+    updateBackgroundBass(now);
     updatePlayerCollision(); /* bullet    -> alien grid       */
     /*
     TODO :
@@ -1121,6 +1186,7 @@ static void resetGame(void) {
     if (checkGameOver()) {
       resetGame();
       stopSound();
+      stopSound2();
       current_tune_notes = 0;
       current_tune_times = 0;
       current_tune_note_count = 0;
@@ -1157,6 +1223,7 @@ int main(void) {
   initSysTick();
   setupIO();
   initSound();
+  initSound2();
   
   // Game Begins
   while(1)

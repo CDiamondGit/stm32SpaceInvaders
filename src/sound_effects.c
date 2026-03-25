@@ -36,3 +36,31 @@ void stopSound(void)
 {
     TIM14->CR1 &= ~TIM_CR1_CEN;  // disable timer
 }
+
+void initSound2(void)
+{
+    RCC->APB1ENR |= (1 << 1); // TIM3 clock
+    pinMode(GPIOB, 0, 2);     // PB0 alternate function
+    GPIOB->AFR[0] &= ~(0x0fu << 0); // AF1 on PB0
+    GPIOB->AFR[0] |= (1 << 0);
+    TIM3->CR1 = 0;
+    TIM3->CCMR2 = (1 << 6) + (1 << 5); // CH3 PWM mode
+    TIM3->CCER |= (1 << 8);             // CH3 enable
+    TIM3->PSC = 48000000UL/65536UL;
+    TIM3->ARR = (48000000UL/(uint32_t)(TIM3->PSC))/((uint32_t)C4);
+    TIM3->CCR3 = TIM3->ARR/2;
+    TIM3->CNT = 0;
+}
+
+void playNote2(uint32_t freq)
+{
+    TIM3->ARR = (uint32_t)65536/((uint32_t)freq);
+    TIM3->CCR3 = TIM3->ARR/2;
+    TIM3->CNT = 0;
+    TIM3->CR1 |= (1 << 0);
+}
+
+void stopSound2(void)
+{
+    TIM3->CR1 &= ~TIM_CR1_CEN;
+}
