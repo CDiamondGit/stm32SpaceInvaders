@@ -135,11 +135,10 @@ typedef enum {
 /* --- Sound / timing / interrupts ----------------------------------------- */
 void start_sound_effect(const uint32_t notes[],const uint32_t times[],uint32_t count,uint32_t repeat);
 void SysTick_Handler(void);
-
-static uint32_t getBackgroundStepMs(void);
-static void startBackgroundBass(void);
-static void stopBackgroundBass(void);
-static void updateBackgroundBass(uint32_t now);
+static uint32_t get_background_step_ms(void);
+static void start_background_music(void);
+static void stop_background_music(void);
+static void update_background_music(uint32_t now);
 
 /* --- Hardware setup ------------------------------------------------------- */
 void pinMode(GPIO_TypeDef *port, uint32_t pin, uint32_t mode);
@@ -220,12 +219,12 @@ static uint8_t bg_note_index = 0;
 static uint8_t bg_note_on = 0;
 
 /* --- Sound effect data ---------------------------------------------------- */
-const uint32_t shoot_notes[] = { C4, A3, C4 };
-const uint32_t shoot_times[] = { 60, 80, 60 };
+const uint32_t shoot_notes[] = { D5, D4, D5 };
+const uint32_t shoot_times[] = { 80, 100, 80 };
 const uint32_t shoot_note_count = 3;
 
 const uint32_t explode_notes[] = { F4, D4, C4, A3, F3, D3, C3, A2, F2, D2, C2 };
-const uint32_t explode_times[] = { 25, 25, 30, 30, 35, 40, 40, 45, 45, 50, 60 };
+const uint32_t explode_times[] = { 20, 20, 25, 25, 30, 35, 35, 40, 40, 45, 55 };
 const uint32_t explode_note_count = 11;
 
 /* --- Runtime game globals ------------------------------------------------- */
@@ -431,6 +430,7 @@ int main(void) {
 * FUNCTION DEFINITIONS
 */
 
+/* --- Sound / timing / interrupts ----------------------------------------- */
 void start_sound_effect(const uint32_t notes[],const uint32_t times[],uint32_t count,uint32_t repeat)
 {
   if (count == 0)
@@ -478,10 +478,49 @@ void SysTick_Handler(void) {
     }
   }
 }
-void loadBackground() {
-  putImage(0, 0, 128,50, top_background, 1, 0);
-  //putImage(110, 0, 128,50, bottom_background, 1, 0);
+static uint32_t get_background_step_ms(void) {
+  uint16_t lowestY = getLowestAlienY();
+  if (lowestY == 0) return 500;
+
+  uint16_t gap = HUD_LINE_Y - lowestY;
+
+  if (gap > 90) return 420;
+  if (gap > 65) return 320;
+  if (gap > 40) return 240;
+  if (gap > 20) return 180;
+  return 130;
 }
+static void start_background_music(void) {
+  bg_note_index = 0;
+  bg_note_on = 0;
+  bg_next_change_ms = milliseconds;
+  stopSound2();
+}
+static void stop_background_music(void) {
+  stopSound2();
+  bg_note_on = 0;
+}
+static void update_background_music(uint32_t now) {
+  uint32_t step_ms = get_background_step_ms();
+
+  if (now < bg_next_change_ms)
+    return;
+
+  bg_next_change_ms = now + step_ms;
+
+  if (bg_note_on) {
+    stopSound2();
+    bg_note_on = 0;
+  } else {
+    playNote2(bg_notes[bg_note_index]);
+    bg_note_index++;
+    if (bg_note_index >= bg_note_count)
+      bg_note_index = 0;
+    bg_note_on = 1;
+  }
+}
+
+/* --- Hardware setup ------------------------------------------------------- */
 void pinMode(GPIO_TypeDef* port, uint32_t pin, uint32_t mode) {
   uint32_t val = port->MODER;
   val &= ~(3u << (pin * 2));
@@ -526,6 +565,8 @@ static void setupIO(void) {
   pinMode(GPIOA, 11, 0);
   enablePullUp(GPIOA, 11); /* down  – PA11 */
 }
+
+/* --- Utility / timing / random ------------------------------------------- */
 void delay(volatile uint32_t ms) {
   uint32_t end = ms + milliseconds;
   while (milliseconds != end)
@@ -557,6 +598,17 @@ uint8_t get_random_bit(uint32_t *state) {
 int isInside(uint16_t x1,uint16_t y1,uint16_t w,uint16_t h,uint16_t px,uint16_t py) {
   return (px >= x1 && px <= x1 + w && py >= y1 && py <= y1 + h) ? 1 : 0;
 }
+
+/* --- Background / screen helpers ----------------------------------------- */
+void loadBackground() {
+  putImage(0, 0, 128,50, top_background, 1, 0);
+  //putImage(110, 0, 128,50, bottom_background, 1, 0);
+}
+void clearDisplay() {
+    fillRectangle(0, 0, SCREEN_W, SCREEN_H, 0);  
+  }
+
+/* --- Game initialisation -------------------------------------------------- */
 static void parkAlienBullet(int col) {
   AlienGrid* ag = &gs.aliens;
   Bullet* b = &ag->ab[col];
@@ -631,9 +683,22 @@ static void initGameState(void) {
     /* Alien grid */
     initAlienGrid();
   }
-void clearDisplay() {
-    fillRectangle(0, 0, SCREEN_W, SCREEN_H, 0);  
-  }
+static void resetGame(void) {
+  /* Blank the whole play area above the HUD line */
+  fillRectangle(0, 0, SCREEN_W, HUD_LINE_Y, 0);
+
+  /* Re-initialise all game state */
+  initGameState();
+
+  /* Redraw the initial scene */
+  renderAliens();
+  putImage(gs.ship.coords.x, gs.ship.coords.y, SHIP_W, SHIP_H, spaceShip, 1, 0);
+  gs.lives -= 1;
+  start_background_music();
+  /* HUD line stays – was never erased */
+}
+
+/* --- Menu / app state screens -------------------------------------------- */
 void mainMenu(AppState *as) {
     
     clearDisplay();
@@ -731,6 +796,112 @@ void help(AppState *as) {
       }
     }
   }
+void getPause(PlayingState *ps) {
+
+
+  }
+void playing(AppState *as) {
+                  
+  clearDisplay();
+                  
+  /* Game */
+  initGameState();
+                  
+  /* Initial draw */
+  renderAliens();
+  putImage(gs.ship.coords.x, gs.ship.coords.y, SHIP_W, SHIP_H, spaceShip, 1, 0);
+  drawLine(0, HUD_LINE_Y, SCREEN_W, HUD_LINE_Y, HUD_LINE_COLOR);
+
+  start_background_music();
+  
+  PlayingState currentPlayingState = GAMERUNNING;
+  int done =0;
+
+  while (!done) {
+  int done2=0;
+  switch(currentPlayingState){
+    
+    case GAMERUNNING:
+      
+    /* Game loop */
+   while (1) {
+    uint32_t now = milliseconds;
+    if (now - lastUpdate < FRAME_DELAY)
+      continue;
+    lastUpdate = now;
+
+    if (gs.lives == 0)
+      return;
+
+    /* Advance bullet */
+    if (gs.bullet.state == BULLET_FIRE) {
+      gs.bullet.coords.y -= gs.bullet.speed;
+      if (gs.bullet.coords.y < 5) {
+        resetPlayerBullet();
+        // renderPlayerBullet();
+      }
+    } else {
+      gs.bullet.coords.x = gs.ship.coords.x + BULLET_OFFSET_X;
+      gs.bullet.coords.y = gs.ship.coords.y - BULLET_OFFSET_Y;
+    }
+
+    AlienGrid* ag = &gs.aliens;
+
+    for (int j = 0; j < ALIEN_COLS; j++) {
+      Bullet* b = &ag->ab[j];
+      if (b->state == BULLET_FIRE) {
+        b->coords.y += b->speed; /* alien bullets go DOWN */
+        if (b->coords.y > HUD_LINE_Y - 5)
+          resetAlienBullet(j);
+      }
+      /* READY bullets track the grid in moveAliens/parkAlienBullet */
+    }
+
+    handleInput();   /* buttons-> positions*/
+    moveAliens(now); /* now = time, timer-> alien grid shift */
+    // updateAlienFire(now);
+    update_background_music(now);
+    updatePlayerCollision(); /* bullet    -> alien grid       */
+    /*
+    TODO :
+    implement alien bullet. | redrawing every alien that has overlapped with
+    bullet
+    */
+
+    if (updateAlienBulletCollision()) {
+      resetGame();
+      continue;
+    }
+
+    if (checkGameOver()) {
+      resetGame();
+      stopSound();
+      stopSound2();
+      current_tune_notes = 0;
+      current_tune_times = 0;
+      current_tune_note_count = 0;
+      current_repeat_tune = 0;
+      current_note_index = 0;
+      current_note_timer = 0;
+      continue;
+    }
+    renderScene(); /* positions -> screen           */
+  }
+  break;
+  case PAUSE:
+    *as = MAINMENU;
+    done =1;
+  break;
+  case GAMEOVER:
+  break;
+  default: 
+  break;
+  }
+  
+}
+}
+
+/* --- Input ---------------------------------------------------------------- */
 static void handleInput(void) {
     /* Right – PB4 */
     if ((GPIOB->IDR & (1 << 4)) == 0) {
@@ -752,6 +923,8 @@ static void handleInput(void) {
     }
   }
 }
+
+/* --- Alien movement / firing --------------------------------------------- */
 static int isAlienGridMt(void) {
   AlienGrid* ag = &gs.aliens;
   for (int i = 0; i < ALIEN_ROWS; i++) {
@@ -837,6 +1010,8 @@ static void updateAlienFire(uint32_t now) {
     }
   }
 }
+
+/* --- Collision / bullet state -------------------------------------------- */
 static int checkCollision(uint16_t o1X,uint16_t o1Y,uint16_t o1w,uint16_t o1h,uint16_t o2X,uint16_t o2Y,uint16_t o2w,uint16_t o2h) {
     if (o1X + o1w <= o2X)
     return 0;
@@ -972,6 +1147,8 @@ static int checkGameOver(void) {
   }
   return 0;
 }
+
+/* --- Rendering ------------------------------------------------------------ */
 /*
  * renderAliens – full grid redraw.
  * Used at startup, level reset, and after every move tick.
@@ -1087,163 +1264,4 @@ static void renderScene(void) {
   renderShip();
   renderPlayerBullet();
   renderAlienBullets();
-}
-static void resetGame(void) {
-  /* Blank the whole play area above the HUD line */
-  fillRectangle(0, 0, SCREEN_W, HUD_LINE_Y, 0);
-
-  /* Re-initialise all game state */
-  initGameState();
-
-  /* Redraw the initial scene */
-  renderAliens();
-  putImage(gs.ship.coords.x, gs.ship.coords.y, SHIP_W, SHIP_H, spaceShip, 1, 0);
-  gs.lives -= 1;
-  startBackgroundBass();
-  /* HUD line stays – was never erased */
-}
-void getPause(PlayingState *ps) {
-
-
-  }
-static uint32_t getBackgroundStepMs(void) {
-  uint16_t lowestY = getLowestAlienY();
-  if (lowestY == 0) return 500;
-
-  uint16_t gap = HUD_LINE_Y - lowestY;
-
-  if (gap > 90) return 420;
-  if (gap > 65) return 320;
-  if (gap > 40) return 240;
-  if (gap > 20) return 180;
-  return 130;
-}
-static void startBackgroundBass(void) {
-  bg_note_index = 0;
-  bg_note_on = 0;
-  bg_next_change_ms = milliseconds;
-  stopSound2();
-}
-static void stopBackgroundBass(void) {
-  stopSound2();
-  bg_note_on = 0;
-}
-static void updateBackgroundBass(uint32_t now) {
-  uint32_t step_ms = getBackgroundStepMs();
-
-  if (now < bg_next_change_ms)
-    return;
-
-  bg_next_change_ms = now + step_ms;
-
-  if (bg_note_on) {
-    stopSound2();
-    bg_note_on = 0;
-  } else {
-    playNote2(bg_notes[bg_note_index]);
-    bg_note_index++;
-    if (bg_note_index >= bg_note_count)
-      bg_note_index = 0;
-    bg_note_on = 1;
-  }
-}
- void playing(AppState *as) {
-                  
-  clearDisplay();
-                  
-  /* Game */
-  initGameState();
-                  
-  /* Initial draw */
-  renderAliens();
-  putImage(gs.ship.coords.x, gs.ship.coords.y, SHIP_W, SHIP_H, spaceShip, 1, 0);
-  drawLine(0, HUD_LINE_Y, SCREEN_W, HUD_LINE_Y, HUD_LINE_COLOR);
-
-  startBackgroundBass();
-  
-  PlayingState currentPlayingState = GAMERUNNING;
-  int done =0;
-
-  while (!done) {
-  int done2=0;
-  switch(currentPlayingState){
-    
-    case GAMERUNNING:
-      
-    /* Game loop */
-   while (1) {
-    uint32_t now = milliseconds;
-    if (now - lastUpdate < FRAME_DELAY)
-      continue;
-    lastUpdate = now;
-
-    if (gs.lives == 0)
-      return;
-
-    /* Advance bullet */
-    if (gs.bullet.state == BULLET_FIRE) {
-      gs.bullet.coords.y -= gs.bullet.speed;
-      if (gs.bullet.coords.y < 5) {
-        resetPlayerBullet();
-        // renderPlayerBullet();
-      }
-    } else {
-      gs.bullet.coords.x = gs.ship.coords.x + BULLET_OFFSET_X;
-      gs.bullet.coords.y = gs.ship.coords.y - BULLET_OFFSET_Y;
-    }
-
-    AlienGrid* ag = &gs.aliens;
-
-    for (int j = 0; j < ALIEN_COLS; j++) {
-      Bullet* b = &ag->ab[j];
-      if (b->state == BULLET_FIRE) {
-        b->coords.y += b->speed; /* alien bullets go DOWN */
-        if (b->coords.y > HUD_LINE_Y - 5)
-          resetAlienBullet(j);
-      }
-      /* READY bullets track the grid in moveAliens/parkAlienBullet */
-    }
-
-    handleInput();   /* buttons-> positions*/
-    moveAliens(now); /* now = time, timer-> alien grid shift */
-    // updateAlienFire(now);
-    updateBackgroundBass(now);
-    updatePlayerCollision(); /* bullet    -> alien grid       */
-    /*
-    TODO :
-    implement alien bullet. | redrawing every alien that has overlapped with
-    bullet
-    */
-
-    if (updateAlienBulletCollision()) {
-      resetGame();
-      continue;
-    }
-
-    if (checkGameOver()) {
-      resetGame();
-      stopSound();
-      stopSound2();
-      current_tune_notes = 0;
-      current_tune_times = 0;
-      current_tune_note_count = 0;
-      current_repeat_tune = 0;
-      current_note_index = 0;
-      current_note_timer = 0;
-      continue;
-    }
-    renderScene(); /* positions -> screen           */
-  }
-  break;
-  case PAUSE:
-    *as = MAINMENU;
-    done =1;
-  break;
-  case GAMEOVER:
-  break;
-  default: 
-  break;
-  }
-  
-}
 }
