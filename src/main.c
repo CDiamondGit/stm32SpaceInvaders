@@ -66,6 +66,9 @@
 #define ALIEN_FIRE_MIN_MS 800
 #define ALIEN_FIRE_MAX_MS 3000
 
+/* --- SOUND ---------------------------------------------------------------- */
+#define SOUND_DEFAULT_TEMPO 420
+
 /*
 * TYPE DECLARATIONS
 */
@@ -133,12 +136,14 @@ typedef enum {
 */
 
 /* --- Sound / timing / interrupts ----------------------------------------- */
-void start_sound_effect(const uint32_t notes[],const uint32_t times[],uint32_t count,uint32_t repeat);
+void start_sound_effect_ch1(const uint32_t notes[], const uint32_t times[],uint32_t count, uint32_t repeat);
+void start_sound_effect_ch2(const uint32_t notes[], const uint32_t times[],uint32_t count, uint32_t repeat);
 void SysTick_Handler(void);
-static uint32_t get_background_step_ms(void);
+static uint32_t get_background_tempo_ms(void);
 static void start_background_music(void);
-static void stop_background_music(void);
 static void update_background_music(uint32_t now);
+static void stop_sound_effect_ch1(void);
+static void stop_sound_effect_ch2(void);
 
 /* --- Hardware setup ------------------------------------------------------- */
 void pinMode(GPIO_TypeDef *port, uint32_t pin, uint32_t mode);
@@ -202,21 +207,26 @@ static void renderScene(void);
 */
 
 /* --- Sound engine state --------------------------------------------------- */
-volatile const uint32_t *current_tune_notes = 0;
-volatile const uint32_t *current_tune_times = 0;
-volatile uint32_t current_tune_note_count = 0;
-volatile uint32_t current_repeat_tune = 0;
-volatile uint32_t current_note_index = 0;
-volatile int32_t current_note_timer = 0;
+volatile const uint32_t *channel1_notes = 0;
+volatile const uint32_t *channel1_times = 0;
+volatile uint32_t channel1_note_count = 0;
+volatile uint32_t channel1_repeat = 0;
+volatile uint32_t channel1_note_index = 0;
+volatile int32_t channel1_note_timer = 0;
 volatile uint32_t milliseconds = 0;
 
-/* --- Background bass state ------------------------------------------------ */
-static const uint32_t bg_notes[] = { C4, B3, AS3_Bb3, A3 };
-static const uint32_t bg_note_count = 4;
+volatile const uint32_t *channel2_notes = 0;
+volatile const uint32_t *channel2_times = 0;
+volatile uint32_t channel2_note_count = 0;
+volatile uint32_t channel2_repeat = 0;
+volatile uint32_t channel2_note_index = 0;
+volatile int32_t channel2_note_timer = 0;
 
-static uint32_t bg_next_change_ms = 0;
-static uint8_t bg_note_index = 0;
-static uint8_t bg_note_on = 0;
+/* --- Background music state ---------------------------------------------- */
+static const uint32_t background_notes[] = { C4, B3, AS3_Bb3, A3 };
+static const uint32_t background_times[] = { 850, 850, 850, 850 };
+static const uint32_t background_note_count = 4;
+volatile uint32_t background_tempo_ms = 420;
 
 /* --- Sound effect data ---------------------------------------------------- */
 const uint32_t shoot_notes[] = { D5, D4, D5 };
@@ -226,6 +236,14 @@ const uint32_t shoot_note_count = 3;
 const uint32_t explode_notes[] = { F4, D4, C4, A3, F3, D3, C3, A2, F2, D2, C2 };
 const uint32_t explode_times[] = { 20, 20, 25, 25, 30, 35, 35, 40, 40, 45, 55 };
 const uint32_t explode_note_count = 11;
+
+const uint32_t enter_game_notes[] = { C3, D3, G3 };
+const uint32_t enter_game_times[] = { 150, 150, 150 };
+const uint32_t enter_game_note_count = 3;
+
+const uint32_t enter_game_notes2[] = { C6, D6, G6 };
+const uint32_t enter_game_times2[] = { 150, 150, 150 };
+const uint32_t enter_game_note_count2 = 3;
 
 /* --- Runtime game globals ------------------------------------------------- */
 static uint32_t lastUpdate = 0;
@@ -361,6 +379,9 @@ int main(void) {
       help(&currentAppState);
       break;
       case PLAYING:
+      start_sound_effect_ch1(enter_game_notes, enter_game_times, enter_game_note_count, 0);
+      start_sound_effect_ch2(enter_game_notes2, enter_game_times2, enter_game_note_count2, 0);
+      delay(500);
       playing(&currentAppState);
       break;
     
@@ -431,95 +452,178 @@ int main(void) {
 */
 
 /* --- Sound / timing / interrupts ----------------------------------------- */
-void start_sound_effect(const uint32_t notes[],const uint32_t times[],uint32_t count,uint32_t repeat)
+void start_sound_effect_ch1(const uint32_t notes[], const uint32_t times[],uint32_t count, uint32_t repeat)
 {
-  if (count == 0)
-  {
-        return;
+  if (count == 0) {
+    return;
   }
-  __disable_irq();
-  current_tune_notes = notes;
-  current_tune_times = times;
-  current_tune_note_count = count;
-  current_repeat_tune = repeat;
-  current_note_index = 0;
-  current_note_timer = current_tune_times[0];
 
-  playNote(current_tune_notes[0]);
+  __disable_irq();
+  channel1_notes = notes;
+  channel1_times = times;
+  channel1_note_count = count;
+  channel1_repeat = repeat;
+  channel1_note_index = 0;
+  channel1_note_timer = channel1_times[0];
+
+  playNote(channel1_notes[0]);
   __enable_irq();
 }
-void SysTick_Handler(void) {
+void start_sound_effect_ch2(const uint32_t notes[], const uint32_t times[],uint32_t count, uint32_t repeat)
+{
+  if (count == 0) {
+    return;
+  }
+
+  __disable_irq();
+  channel2_notes = notes;
+  channel2_times = times;
+  channel2_note_count = count;
+  channel2_repeat = repeat;
+  channel2_note_index = 0;
+  channel2_note_timer = channel2_times[0];
+
+  playNote2(channel2_notes[0]);
+  __enable_irq();
+}
+void SysTick_Handler(void)
+{
   milliseconds++;
 
-  if (current_tune_notes != 0) {
-    if (current_note_timer > 0) {
-      current_note_timer--;
-    }
+  /* channel 1 */
+  if (channel1_notes != 0) {
+    if (channel1_note_timer > 0)
+      channel1_note_timer--;
 
-    if (current_note_timer == 0) {
-      current_note_index++;
+    if (channel1_note_timer == 0) {
+      channel1_note_index++;
 
-      if (current_note_index >= current_tune_note_count) {
-        if (current_repeat_tune == 0) {
-          current_tune_notes = 0;
-          current_tune_times = 0;
-          current_tune_note_count = 0;
-          current_note_index = 0;
-          current_note_timer = 0;
+      if (channel1_note_index >= channel1_note_count) {
+        if (channel1_repeat == 0) {
+          channel1_notes = 0;
+          channel1_times = 0;
+          channel1_note_count = 0;
+          channel1_note_index = 0;
+          channel1_note_timer = 0;
           stopSound();
-          return;
         } else {
-          current_note_index = 0;
+          channel1_note_index = 0;
         }
       }
 
-      current_note_timer = current_tune_times[current_note_index];
-      playNote(current_tune_notes[current_note_index]);
+      if (channel1_notes != 0) {
+        channel1_note_timer = channel1_times[channel1_note_index];
+        playNote(channel1_notes[channel1_note_index]);
+      }
+    }
+  }
+
+  /* channel 2 */
+  if (channel2_notes != 0) {
+    if (channel2_note_timer > 0)
+      channel2_note_timer--;
+
+    if (channel2_note_timer == 0) {
+      channel2_note_index++;
+
+      if (channel2_note_index >= channel2_note_count) {
+        if (channel2_repeat == 0) {
+          channel2_notes = 0;
+          channel2_times = 0;
+          channel2_note_count = 0;
+          channel2_repeat = 0;
+          channel2_note_index = 0;
+          channel2_note_timer = 0;
+          stopSound2();
+        } else {
+          channel2_note_index = 0;
+        }
+      }
+
+      if (channel2_notes != 0) {
+        uint32_t base_time = channel2_times[channel2_note_index];
+        uint32_t scaled_time =
+            (base_time * background_tempo_ms) / SOUND_DEFAULT_TEMPO;
+
+        if (scaled_time == 0)
+          scaled_time = 1;
+
+        channel2_note_timer = (int32_t)scaled_time;
+        playNote2(channel2_notes[channel2_note_index]);
+      }
     }
   }
 }
-static uint32_t get_background_step_ms(void) {
+static uint32_t get_background_tempo_ms(void)
+{
   uint16_t lowestY = getLowestAlienY();
-  if (lowestY == 0) return 500;
+  if (lowestY == 0)
+    return 500;
 
   uint16_t gap = HUD_LINE_Y - lowestY;
 
-  if (gap > 90) return 420;
-  if (gap > 65) return 320;
-  if (gap > 40) return 240;
-  if (gap > 20) return 180;
+  if (gap > 90)
+    return 420;
+  if (gap > 65)
+    return 320;
+  if (gap > 40)
+    return 240;
+  if (gap > 20)
+    return 180;
   return 130;
 }
-static void start_background_music(void) {
-  bg_note_index = 0;
-  bg_note_on = 0;
-  bg_next_change_ms = milliseconds;
-  stopSound2();
+static void start_background_music(void)
+{
+  background_tempo_ms = get_background_tempo_ms();
+  start_sound_effect_ch2(background_notes, background_times,
+                         background_note_count, 1);
 }
-static void stop_background_music(void) {
-  stopSound2();
-  bg_note_on = 0;
-}
-static void update_background_music(uint32_t now) {
-  uint32_t step_ms = get_background_step_ms();
+static void update_background_music(uint32_t now)
+{
+  (void)now;
 
-  if (now < bg_next_change_ms)
+  uint32_t new_tempo = get_background_tempo_ms();
+  if (new_tempo == background_tempo_ms)
     return;
 
-  bg_next_change_ms = now + step_ms;
+  __disable_irq();
 
-  if (bg_note_on) {
-    stopSound2();
-    bg_note_on = 0;
-  } else {
-    playNote2(bg_notes[bg_note_index]);
-    bg_note_index++;
-    if (bg_note_index >= bg_note_count)
-      bg_note_index = 0;
-    bg_note_on = 1;
+  if (channel2_notes != 0 && background_tempo_ms != 0) {
+    channel2_note_timer =
+        (channel2_note_timer * (int32_t)new_tempo) / (int32_t)background_tempo_ms;
+
+    if (channel2_note_timer <= 0)
+      channel2_note_timer = 1;
   }
-}
 
+  background_tempo_ms = new_tempo;
+
+  __enable_irq();
+}
+static void stop_sound_effect_ch1(void)
+{
+  __disable_irq();
+  channel1_notes = 0;
+  channel1_times = 0;
+  channel1_note_count = 0;
+  channel1_repeat = 0;
+  channel1_note_index = 0;
+  channel1_note_timer = 0;
+  stopSound();
+  __enable_irq();
+}
+static void stop_sound_effect_ch2(void)
+{
+  __disable_irq();
+  channel2_notes = 0;
+  channel2_times = 0;
+  channel2_note_count = 0;
+  channel2_repeat = 0;
+  channel2_note_index = 0;
+  channel2_note_timer = 0;
+  stopSound2();
+  __enable_irq();
+}
 /* --- Hardware setup ------------------------------------------------------- */
 void pinMode(GPIO_TypeDef* port, uint32_t pin, uint32_t mode) {
   uint32_t val = port->MODER;
@@ -806,6 +910,8 @@ void playing(AppState *as) {
                   
   /* Game */
   initGameState();
+
+  delay(300);
                   
   /* Initial draw */
   renderAliens();
@@ -874,15 +980,9 @@ void playing(AppState *as) {
     }
 
     if (checkGameOver()) {
+      stop_sound_effect_ch1();
+      stop_sound_effect_ch2();
       resetGame();
-      stopSound();
-      stopSound2();
-      current_tune_notes = 0;
-      current_tune_times = 0;
-      current_tune_note_count = 0;
-      current_repeat_tune = 0;
-      current_note_index = 0;
-      current_note_timer = 0;
       continue;
     }
     renderScene(); /* positions -> screen           */
@@ -919,7 +1019,7 @@ static void handleInput(void) {
   if ((GPIOA->IDR & (1 << 8)) == 0) {
     if (gs.bullet.state == BULLET_READY) {
       gs.bullet.state = BULLET_FIRE;
-      start_sound_effect(shoot_notes, shoot_times, shoot_note_count, 0);
+      start_sound_effect_ch1(shoot_notes, shoot_times, shoot_note_count, 0);
     }
   }
 }
@@ -1104,7 +1204,7 @@ static void updatePlayerCollision(void) {
         fillRectangle(ax, ay, ALIEN_W, ALIEN_H, 0);
 
         ag->status[i][j] = 1;
-        start_sound_effect(explode_notes, explode_times, explode_note_count, 0);
+        start_sound_effect_ch1(explode_notes, explode_times, explode_note_count, 0);
         
         /* Park the alien bullet for this column (shooter is dead) */
         resetAlienBullet(j);
