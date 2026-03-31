@@ -66,8 +66,8 @@
 #define ALIEN_FIRE_MIN_MS 800
 #define ALIEN_FIRE_MAX_MS 3000
 
-/* --- SOUND ---------------------------------------------------------------- */
-#define SOUND_DEFAULT_TEMPO 420
+// /* --- SOUND ---------------------------------------------------------------- */
+// #define SOUND_DEFAULT_TEMPO 420
 
 /*
 * TYPE DECLARATIONS
@@ -139,9 +139,9 @@ typedef enum {
 void start_sound_effect_ch1(const uint32_t notes[], const uint32_t times[],uint32_t count, uint32_t repeat);
 void start_sound_effect_ch2(const uint32_t notes[], const uint32_t times[],uint32_t count, uint32_t repeat);
 void SysTick_Handler(void);
-static uint32_t get_background_tempo_ms(void);
-static void start_background_music(void);
-static void update_background_music(uint32_t now);
+// static uint32_t get_background_tempo_ms(void);
+// static void start_background_music(void);
+// static void update_background_music(uint32_t now);
 static void stop_sound_effect_ch1(void);
 static void stop_sound_effect_ch2(void);
 
@@ -222,11 +222,11 @@ volatile uint32_t channel2_repeat = 0;
 volatile uint32_t channel2_note_index = 0;
 volatile int32_t channel2_note_timer = 0;
 
-/* --- Background music state ---------------------------------------------- */
-static const uint32_t background_notes[] = { C4, B3, AS3_Bb3, A3 };
-static const uint32_t background_times[] = { 850, 850, 850, 850 };
-static const uint32_t background_note_count = 4;
-volatile uint32_t background_tempo_ms = 420;
+// /* --- Background music state ---------------------------------------------- */
+// static const uint32_t background_notes[] = { C4, B3, AS3_Bb3, A3 };
+// static const uint32_t background_times[] = { 850, 850, 850, 850 };
+// static const uint32_t background_note_count = 4;
+// volatile uint32_t background_tempo_ms = 420;
 
 /* --- Sound effect data ---------------------------------------------------- */
 const uint32_t shoot_notes[] = { D5, D4, D5 };
@@ -393,7 +393,6 @@ int main(void) {
       start_sound_effect_ch1(enter_game_notes_ch1, enter_game_times_ch1, enter_game_note_count_ch1, 0);
       start_sound_effect_ch2(enter_game_notes_ch2, enter_game_times_ch2, enter_game_note_count_ch2, 0);
       delay(500);
-      start_sound_effect_ch2(game_loop_notes, game_loop_times, game_loop_note_count, 1);
       playing(&currentAppState);
       break;
     
@@ -571,19 +570,14 @@ void SysTick_Handler(void)
         }
       }
 
-      if (channel2_notes != 0) {
-        uint32_t base_time = channel2_times[channel2_note_index];
-        uint32_t scaled_time =
-            (base_time * background_tempo_ms) / SOUND_DEFAULT_TEMPO;
-
-        if (scaled_time == 0)
-          scaled_time = 1;
-
-        channel2_note_timer = (int32_t)scaled_time;
+      if (channel2_notes != 0) 
+      {
+        channel2_note_timer = channel2_times[channel2_note_index];
         if (channel2_notes[channel2_note_index] == REST) 
         {
           stopSound2();
-        } else 
+        } 
+        else 
         {
           playNote2(channel2_notes[channel2_note_index]);
         }
@@ -591,52 +585,52 @@ void SysTick_Handler(void)
     }
   }
 }
-static uint32_t get_background_tempo_ms(void)
-{
-  uint16_t lowestY = getLowestAlienY();
-  if (lowestY == 0)
-    return 500;
+// static uint32_t get_background_tempo_ms(void)
+// {
+//   uint16_t lowestY = getLowestAlienY();
+//   if (lowestY == 0)
+//     return 500;
 
-  uint16_t gap = HUD_LINE_Y - lowestY;
+//   uint16_t gap = HUD_LINE_Y - lowestY;
 
-  if (gap > 90)
-    return 420;
-  if (gap > 65)
-    return 320;
-  if (gap > 40)
-    return 240;
-  if (gap > 20)
-    return 180;
-  return 130;
-}
-static void start_background_music(void)
-{
-  background_tempo_ms = get_background_tempo_ms();
-  start_sound_effect_ch2(background_notes, background_times,
-                         background_note_count, 1);
-}
-static void update_background_music(uint32_t now)
-{
-  (void)now;
+//   if (gap > 90)
+//     return 420;
+//   if (gap > 65)
+//     return 320;
+//   if (gap > 40)
+//     return 240;
+//   if (gap > 20)
+//     return 180;
+//   return 130;
+// }
+// static void start_background_music(void)
+// {
+//   background_tempo_ms = get_background_tempo_ms();
+//   start_sound_effect_ch2(background_notes, background_times,
+//                          background_note_count, 1);
+// }
+// static void update_background_music(uint32_t now)
+// {
+//   (void)now;
 
-  uint32_t new_tempo = get_background_tempo_ms();
-  if (new_tempo == background_tempo_ms)
-    return;
+//   uint32_t new_tempo = get_background_tempo_ms();
+//   if (new_tempo == background_tempo_ms)
+//     return;
 
-  __disable_irq();
+//   __disable_irq();
 
-  if (channel2_notes != 0 && background_tempo_ms != 0) {
-    channel2_note_timer =
-        (channel2_note_timer * (int32_t)new_tempo) / (int32_t)background_tempo_ms;
+//   if (channel2_notes != 0 && background_tempo_ms != 0) {
+//     channel2_note_timer =
+//         (channel2_note_timer * (int32_t)new_tempo) / (int32_t)background_tempo_ms;
 
-    if (channel2_note_timer <= 0)
-      channel2_note_timer = 1;
-  }
+//     if (channel2_note_timer <= 0)
+//       channel2_note_timer = 1;
+//   }
 
-  background_tempo_ms = new_tempo;
+//   background_tempo_ms = new_tempo;
 
-  __enable_irq();
-}
+//   __enable_irq();
+// }
 static void stop_sound_effect_ch1(void)
 {
   __disable_irq();
@@ -840,7 +834,7 @@ static void resetGame(void) {
   renderAliens();
   putImage(gs.ship.coords.x, gs.ship.coords.y, SHIP_W, SHIP_H, spaceShip, 1, 0);
   gs.lives -= 1;
-  start_background_music();
+  // start_background_music();
   /* HUD line stays – was never erased */
 }
 
@@ -961,7 +955,7 @@ void playing(AppState *as) {
   putImage(gs.ship.coords.x, gs.ship.coords.y, SHIP_W, SHIP_H, spaceShip, 1, 0);
   drawLine(0, HUD_LINE_Y, SCREEN_W, HUD_LINE_Y, HUD_LINE_COLOR);
 
-  start_background_music();
+  start_sound_effect_ch2(game_loop_notes, game_loop_times, game_loop_note_count, 1);
   
   PlayingState currentPlayingState = GAMERUNNING;
   int done =0;
@@ -1009,7 +1003,6 @@ void playing(AppState *as) {
     handleInput();   /* buttons-> positions*/
     moveAliens(now); /* now = time, timer-> alien grid shift */
     // updateAlienFire(now);
-    update_background_music(now);
     updatePlayerCollision(); /* bullet    -> alien grid       */
     /*
     TODO :
