@@ -237,13 +237,24 @@ const uint32_t explode_notes[] = { F4, D4, C4, A3, F3, D3, C3, A2, F2, D2, C2 };
 const uint32_t explode_times[] = { 20, 20, 25, 25, 30, 35, 35, 40, 40, 45, 55 };
 const uint32_t explode_note_count = 11;
 
-const uint32_t enter_game_notes[] = { C3, D3, G3 };
-const uint32_t enter_game_times[] = { 150, 150, 150 };
-const uint32_t enter_game_note_count = 3;
+const uint32_t enter_game_notes_ch1[] = { C3, D3, G3 };
+const uint32_t enter_game_times_ch1[] = { 150, 150, 150 };
+const uint32_t enter_game_note_count_ch1 = 3;
 
-const uint32_t enter_game_notes2[] = { C6, D6, G6 };
-const uint32_t enter_game_times2[] = { 150, 150, 150 };
-const uint32_t enter_game_note_count2 = 3;
+const uint32_t enter_game_notes_ch2[] = { C6, D6, G6 };
+const uint32_t enter_game_times_ch2[] = { 150, 150, 150 };
+const uint32_t enter_game_note_count_ch2 = 3;
+
+const uint32_t game_loop_notes[] = { REST, G5, A5, AS5_Bb5, A5, F5, A5, G5, REST, G5, A5, AS5_Bb5, C6, AS5_Bb5, A5, G5, REST, G5, A5, AS5_Bb5, A5, F5, A5, G5, D6, REST, C6, REST, AS5_Bb5, A5, AS5_Bb5, C6, F6, REST, REST, G5, D5, D6, D5, C6, D5, AS5_Bb5, D5, A5, D5, AS5_Bb5, D5, A5, D5, G5, D5, A5, D5, AS5_Bb5, D5, C6, D5, AS5_Bb5, D5, A5, D5, F5, D5, A5, D5, G5, D5, G5, D5, D6, D5, C6, D5, AS5_Bb5, D5, A5, D5, AS5_Bb5, D5, A5, D5, AS5_Bb5, D5, A5, D5, AS5_Bb5, D5, C6, D5, AS5_Bb5, D5, A5, D5, F5, D5, A5, D5, G5, D5, G5, D5, D6, D5, C6, D5, AS5_Bb5, D5, A5, D5, AS5_Bb5, D5, A5, D5, G5, D5, A5, D5, AS5_Bb5, D5, C6, D5, AS5_Bb5, D5, A5, D5, F5, D5, A5, D5, G5, D5, AS5_Bb5, D5, D6, D5, C6, D5, AS5_Bb5, D5, A5, D5, AS5_Bb5, D5, A5, D5, G5, D5, A5, D5, AS5_Bb5, D5, C6, D5, AS5_Bb5, D5, A5, D5, F5, D5, A5, D5, G5, D5, C6, C6, F6, D6, REST, REST, REST, C6, AS5_Bb5, C6, F6, D6, C6, AS5_Bb5, C6, F6, D6, REST, REST, REST, C6, D6, DS6_Eb6, F6, D6, REST, DS6_Eb6, REST, C6, F6, D6, REST, REST, REST, C6, AS5_Bb5, C6, F6, D6, C6, AS5_Bb5, C6, F6, D6, REST, REST, REST, C6, D6, DS6_Eb6, F6, D5, FS5_Gb5, F5, A5, A5, G5, A5, G5, A5, G5, AS5_Bb5, A5, G5, F5, A5, G5, D5, A5, G5, D5, A5, G5, D5, AS5_Bb5, C6, A5, AS5_Bb5, G5, D5, D6, D5, C6, D5, AS5_Bb5, D5, A5, D5, AS5_Bb5, D5, A5, D5, G5, D5, A5, D5, AS5_Bb5, D5, C6, D5, AS5_Bb5, D5, A5, D5, F5, D5, A5, D5, G5, D5, G5, D5, D6, D5, C6, D5, AS5_Bb5, D5, A5, D5, AS5_Bb5, D5, A5, D5, AS5_Bb5, D5, A5, D5, AS5_Bb5, D5, C6, D5, AS5_Bb5, D5, A5, D5, F5, D5, A5, D5, G5, D5, G5, D5, D6, D5, C6, D5, AS5_Bb5, D5, A5, D5, AS5_Bb5, D5, A5, D5, G5, D5, A5, D5, AS5_Bb5, D5, C6, D5, AS5_Bb5, D5, A5, D5, F5, D5, A5, D5, G5, D5, AS5_Bb5, D5, D6, D5, C6, D5, AS5_Bb5, D5, A5, D5, AS5_Bb5, D5, A5, D5, G5, D5, A5, D5, AS5_Bb5, D5, C6, D5, AS5_Bb5, D5, A5, D5, F5, D5, A5, D5, G5, D5, C6, C6, F6, D6, REST, REST, REST, C5, REST, A4, AS4_Bb4, C5, D6, G4, AS4_Bb4, G4, C5, G4, D6, G4, C6, F4, A4, F4, F5, F4, D6, DS4_Eb4, D6, REST, E4, F4, GS4_Ab4, REST, AS4_Bb4, REST, DS5_Eb5, GS4_Ab4, B4, GS4_Ab4, CS5_Db5, GS4_Ab4, DS5_Eb5, GS4_Ab4, CS5_Db5, FS4_Gb4, AS4_Bb4, FS4_Gb4, FS5_Gb5, FS4_Gb4, DS5_Eb5, E5, D5, REST, CS5_Db5, REST, AS4_Bb4, B4, CS5_Db5, DS5_Eb5, GS4_Ab4, B4, GS4_Ab4, CS5_Db5, GS4_Ab4, DS5_Eb5, GS4_Ab4, CS5_Db5, FS4_Gb4, AS4_Bb4, FS4_Gb4, FS5_Gb5, FS4_Gb4, DS5_Eb5, E5, DS5_Eb5, REST, DS5_Eb5, E5, FS5_Gb5, CS5_Db5, E5, CS4_Db4, DS5_Eb5, E5, G5, AS5_Bb5, GS5_Ab5, DS5_Eb5, DS6_Eb6, DS5_Eb5, CS6_Db6, DS5_Eb5, B5, DS5_Eb5, AS5_Bb5, DS5_Eb5, B5, DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5, AS5_Bb5, DS5_Eb5, B5, DS5_Eb5, CS6_Db6, DS5_Eb5, B5, DS5_Eb5, AS5_Bb5, DS5_Eb5, FS5_Gb5, DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5, GS5_Ab5, DS5_Eb5, DS6_Eb6, DS5_Eb5, CS6_Db6, DS5_Eb5, B5, DS5_Eb5, AS5_Bb5, DS5_Eb5, B5, DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5, AS5_Bb5, DS5_Eb5, B5, DS5_Eb5, CS6_Db6, DS5_Eb5, B5, DS5_Eb5, AS5_Bb5, DS5_Eb5, FS5_Gb5, DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5, GS5_Ab5, DS5_Eb5, DS6_Eb6, DS5_Eb5, CS6_Db6, DS5_Eb5, B5, DS5_Eb5, AS5_Bb5, DS5_Eb5, B5, DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5, AS5_Bb5, DS5_Eb5, B5, DS5_Eb5, CS6_Db6, DS5_Eb5, B5, DS5_Eb5, AS5_Bb5, DS5_Eb5, FS5_Gb5, DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5, GS5_Ab5, DS5_Eb5, DS6_Eb6, DS5_Eb5, CS6_Db6, DS5_Eb5, B5, DS5_Eb5, AS5_Bb5, DS5_Eb5, B5, DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5, AS5_Bb5, DS5_Eb5, B5, DS5_Eb5, CS6_Db6, DS5_Eb5, B5, DS5_Eb5, AS5_Bb5, DS5_Eb5, FS5_Gb5, DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5, CS6_Db6, FS6_Gb6, DS6_Eb6, REST, REST, REST, CS6_Db6, B5, CS6_Db6, FS6_Gb6, DS6_Eb6, CS6_Db6, B5, CS6_Db6, FS6_Gb6, DS6_Eb6, REST, REST, REST, CS6_Db6, B5, E6, F6, DS6_Eb6, REST, E6, REST, REST, CS6_Db6, FS6_Gb6, DS6_Eb6, REST, REST, REST, CS6_Db6, B5, CS6_Db6, FS6_Gb6, DS6_Eb6, CS6_Db6, B5, CS6_Db6, FS6_Gb6, DS6_Eb6, REST, REST, REST, CS5_Db5, DS5_Eb5, E5, F5, DS5_Eb5, G5, GS5_Ab5, AS5_Bb5, AS5_Bb5, GS5_Ab5, AS5_Bb5, GS5_Ab5, AS5_Bb5, GS5_Ab5, B6, AS5_Bb5, GS5_Ab5, FS5_Gb5, AS5_Bb5, GS6_Ab6, DS5_Eb5, AS5_Bb5, GS6_Ab6, DS5_Eb5, AS5_Bb5, GS6_Ab6, DS5_Eb5, B5, CS6_Db6, AS5_Bb5, B5, GS5_Ab5, REST, REST };
+
+const uint32_t game_loop_times[] = { 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 208, 208, 417, 417, 417, 208, 208, 208, 208, 417, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 208, 104, 208, 417, 104, 104, 312, 312, 625, 208, 208, 208, 104, 208, 104, 208, 417, 208, 208, 312, 312, 312, 104, 208, 208, 208, 104, 208, 104, 208, 417, 208, 208, 312, 312, 625, 208, 208, 208, 104, 208, 104, 208, 417, 208, 208, 312, 312, 208, 208, 208, 208, 312, 625, 312, 625, 312, 625, 208, 208, 208, 208, 312, 312, 208, 312, 312, 208, 312, 312, 208, 417, 417, 417, 417, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 208, 52, 52, 52, 52, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 417, 417, 208, 208, 156, 156, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 208, 104, 104, 208, 208, 208, 208, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 417, 417, 208, 208, 156, 156, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 417, 208, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 208, 104, 208, 104, 208, 417, 208, 208, 312, 312, 625, 208, 208, 208, 104, 208, 104, 208, 417, 208, 208, 312, 312, 312, 104, 104, 208, 104, 208, 104, 208, 417, 208, 208, 312, 312, 625, 208, 208, 208, 104, 208, 104, 208, 417, 208, 208, 312, 312, 208, 208, 208, 208, 312, 312, 312, 312, 208, 208, 104 };
+
+const uint32_t game_loop_note_count = 677;
+
+const uint32_t game_win_notes_ch1[];
+const uint32_t game_win_times_ch1[];
+const uint32_t game_win_note_count_ch1;
+
 
 /* --- Runtime game globals ------------------------------------------------- */
 static uint32_t lastUpdate = 0;
@@ -379,9 +390,10 @@ int main(void) {
       help(&currentAppState);
       break;
       case PLAYING:
-      start_sound_effect_ch1(enter_game_notes, enter_game_times, enter_game_note_count, 0);
-      start_sound_effect_ch2(enter_game_notes2, enter_game_times2, enter_game_note_count2, 0);
+      start_sound_effect_ch1(enter_game_notes_ch1, enter_game_times_ch1, enter_game_note_count_ch1, 0);
+      start_sound_effect_ch2(enter_game_notes_ch2, enter_game_times_ch2, enter_game_note_count_ch2, 0);
       delay(500);
+      start_sound_effect_ch2(game_loop_notes, game_loop_times, game_loop_note_count, 1);
       playing(&currentAppState);
       break;
     
@@ -452,6 +464,7 @@ int main(void) {
 */
 
 /* --- Sound / timing / interrupts ----------------------------------------- */
+
 void start_sound_effect_ch1(const uint32_t notes[], const uint32_t times[],uint32_t count, uint32_t repeat)
 {
   if (count == 0) {
@@ -466,7 +479,13 @@ void start_sound_effect_ch1(const uint32_t notes[], const uint32_t times[],uint3
   channel1_note_index = 0;
   channel1_note_timer = channel1_times[0];
 
-  playNote(channel1_notes[0]);
+  if (channel1_notes[0] == REST)
+  {
+  stopSound();
+  } else 
+  {
+    playNote(channel1_notes[0]);
+  }
   __enable_irq();
 }
 void start_sound_effect_ch2(const uint32_t notes[], const uint32_t times[],uint32_t count, uint32_t repeat)
@@ -483,7 +502,13 @@ void start_sound_effect_ch2(const uint32_t notes[], const uint32_t times[],uint3
   channel2_note_index = 0;
   channel2_note_timer = channel2_times[0];
 
-  playNote2(channel2_notes[0]);
+  if (channel2_notes[0] == REST) 
+  {
+  stopSound2();
+  } else 
+  {
+    playNote2(channel2_notes[0]);
+  }
   __enable_irq();
 }
 void SysTick_Handler(void)
@@ -513,7 +538,13 @@ void SysTick_Handler(void)
 
       if (channel1_notes != 0) {
         channel1_note_timer = channel1_times[channel1_note_index];
-        playNote(channel1_notes[channel1_note_index]);
+        if (channel1_notes[channel1_note_index] == REST) 
+        {
+          stopSound();
+        } else 
+        {
+          playNote(channel1_notes[channel1_note_index]);
+        }
       }
     }
   }
@@ -549,7 +580,13 @@ void SysTick_Handler(void)
           scaled_time = 1;
 
         channel2_note_timer = (int32_t)scaled_time;
-        playNote2(channel2_notes[channel2_note_index]);
+        if (channel2_notes[channel2_note_index] == REST) 
+        {
+          stopSound2();
+        } else 
+        {
+          playNote2(channel2_notes[channel2_note_index]);
+        }
       }
     }
   }
@@ -624,7 +661,9 @@ static void stop_sound_effect_ch2(void)
   stopSound2();
   __enable_irq();
 }
+
 /* --- Hardware setup ------------------------------------------------------- */
+
 void pinMode(GPIO_TypeDef* port, uint32_t pin, uint32_t mode) {
   uint32_t val = port->MODER;
   val &= ~(3u << (pin * 2));
@@ -671,6 +710,7 @@ static void setupIO(void) {
 }
 
 /* --- Utility / timing / random ------------------------------------------- */
+
 void delay(volatile uint32_t ms) {
   uint32_t end = ms + milliseconds;
   while (milliseconds != end)
@@ -704,6 +744,7 @@ int isInside(uint16_t x1,uint16_t y1,uint16_t w,uint16_t h,uint16_t px,uint16_t 
 }
 
 /* --- Background / screen helpers ----------------------------------------- */
+
 void loadBackground() {
   putImage(0, 0, 128,50, top_background, 1, 0);
   //putImage(110, 0, 128,50, bottom_background, 1, 0);
@@ -713,6 +754,7 @@ void clearDisplay() {
   }
 
 /* --- Game initialisation -------------------------------------------------- */
+
 static void parkAlienBullet(int col) {
   AlienGrid* ag = &gs.aliens;
   Bullet* b = &ag->ab[col];
@@ -803,6 +845,7 @@ static void resetGame(void) {
 }
 
 /* --- Menu / app state screens -------------------------------------------- */
+
 void mainMenu(AppState *as) {
     
     clearDisplay();
@@ -1002,6 +1045,7 @@ void playing(AppState *as) {
 }
 
 /* --- Input ---------------------------------------------------------------- */
+
 static void handleInput(void) {
     /* Right – PB4 */
     if ((GPIOB->IDR & (1 << 4)) == 0) {
@@ -1025,6 +1069,7 @@ static void handleInput(void) {
 }
 
 /* --- Alien movement / firing --------------------------------------------- */
+
 static int isAlienGridMt(void) {
   AlienGrid* ag = &gs.aliens;
   for (int i = 0; i < ALIEN_ROWS; i++) {
@@ -1112,6 +1157,7 @@ static void updateAlienFire(uint32_t now) {
 }
 
 /* --- Collision / bullet state -------------------------------------------- */
+
 static int checkCollision(uint16_t o1X,uint16_t o1Y,uint16_t o1w,uint16_t o1h,uint16_t o2X,uint16_t o2Y,uint16_t o2w,uint16_t o2h) {
     if (o1X + o1w <= o2X)
     return 0;
@@ -1249,6 +1295,7 @@ static int checkGameOver(void) {
 }
 
 /* --- Rendering ------------------------------------------------------------ */
+
 /*
  * renderAliens – full grid redraw.
  * Used at startup, level reset, and after every move tick.
