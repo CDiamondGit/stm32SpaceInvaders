@@ -1,5 +1,6 @@
 #include <stm32f031x6.h>
 
+void pinMode(GPIO_TypeDef *port, uint32_t pin, uint32_t mode);
 void initSerial()
 {
 	/* On the nucleo board, TX is on PA2 while RX is on PA15 */
@@ -33,6 +34,14 @@ char egetchar()
 {
 	while( (USART1->ISR & (1 << 5)) == 0); // wait for a character
 	return (char)USART1->RDR; // return the character that is waiting in the Receive Data Register
+}
+int serialCharAvailable()
+{
+	return (USART1->ISR & (1 << 5)) != 0;
+}
+char serialGetCharNonBlocking()
+{
+	return (char)USART1->RDR;
 }
 void eputs(char *String)
 {

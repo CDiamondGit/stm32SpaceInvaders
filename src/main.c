@@ -386,6 +386,7 @@ int main(void) {
   initClock();
   initSysTick();
   setupIO();
+  initSerial();
   initSound();
   initSound2();
 
@@ -815,6 +816,11 @@ void mainMenu(AppState* as) {
   int done = 0;
 
   while (!done) {
+    char c = 0;
+    if (serialCharAvailable()) {
+      c = serialGetCharNonBlocking();
+    }
+
     if (selectedOption == 0) {
       startButton = highlighted;
       helpButton = normal;
@@ -830,25 +836,27 @@ void mainMenu(AppState* as) {
       startButton = normal;
       helpButton = normal;
     }
+
     printText("Start Game", 20, 60, startButton, 0);
     printText("Help", 20, 80, helpButton, 0);
     printText("High Scores", 20, 100, scoreButton, 0);
 
-    if ((GPIOA->IDR & (1 << 11)) == 0) {
+    if (((GPIOA->IDR & (1 << 11)) == 0) || c == 's' || c == 'S') {
       if (selectedOption < 2) {
         selectedOption++;
-        delay(200);
+        delay(100);
       }
     }
 
-    if ((GPIOA->IDR & (1 << 8)) == 0) {
+    if (((GPIOA->IDR & (1 << 8)) == 0) || c == 'w' || c == 'W') {
       if (selectedOption > 0) {
         selectedOption--;
-        delay(200);
+        delay(100);
       }
     }
 
-    if ((GPIOB->IDR & (1 << 4)) == 0) {
+    if (((GPIOB->IDR & (1 << 4)) == 0) || c == ' ' || c == '\r' || c == '\n' ||
+        c == 'd' || c == 'D') {
       if (selectedOption == 0) {
         *as = PLAYING;
         done = 1;
@@ -870,6 +878,11 @@ void help(AppState* as) {
   int done = 0;
 
   while (!done) {
+    char c = 0;
+    if (serialCharAvailable()) {
+      c = serialGetCharNonBlocking();
+    }
+
     printTextX2("HELP", 40, 0, RGBToWord(255, 255, 0), 0);
 
     printText("Control spaceship:", 0, 20, RGBToWord(255, 255, 255), 0);
@@ -879,7 +892,8 @@ void help(AppState* as) {
 
     printText("EXIT HELP = DOWN BUTTON", 0, 120, RGBToWord(255, 255, 255), 0);
 
-    if ((GPIOA->IDR & (1 << 11)) == 0) {
+    if (((GPIOA->IDR & (1 << 11)) == 0) || c == 's' || c == 'S' || c == '\r' ||
+        c == '\n') {
       *as = MAINMENU;
       done = 1;
     }
@@ -1059,9 +1073,19 @@ void getPause(PlayingState* ps, AppState* as) {
       return;
     } else {
       while (1) {
+        stop_sound_effect_ch1();
+        stop_sound_effect_ch2();
         putImage(55, 20, 11, 8, blueAlienBoth[1], 0, 1);
         printText("Press down key", 10, 125, RGBToWord(255, 255, 255), 0);
         printText("to go to main menu", 10, 135, RGBToWord(255, 255, 255), 0);
+
+        if (!(GPIOA->IDR & (1 << 11))) {  // down key to save and exit
+          gs.score = 0;
+
+          *ps = GAMERUNNING;
+          *as = MAINMENU;
+          return;
+        }
       }
     }
   } else {
@@ -1215,31 +1239,46 @@ void playing(AppState* as) {
 }
 
 /* --- Input ---------------------------------------------------------------- */
+
 static void handleInput(PlayingState* ps, AppState* as) {
-  /* Right - PB4 */
-  if ((GPIOB->IDR & (1 << 4)) == 0) {
+  char c = 0;
+
+  if (serialCharAvailable()) {
+    c = serialGetCharNonBlocking();
+  }
+
+  if (c != 0) {
+    eputchar(c);
+  }
+
+  /* Right – PB4 or D */
+  if (((GPIOB->IDR & (1 << 4)) == 0) || (c == 'd') || (c == 'D')) {
     if (gs.ship.coords.x < SHIP_MAX_X)
       gs.ship.coords.x += gs.ship.speed;
   }
 
-  /* Left - PB5 */
-  if ((GPIOB->IDR & (1 << 5)) == 0) {
+  /* Left – PB5 or A */
+  if (((GPIOB->IDR & (1 << 5)) == 0) || (c == 'a') || (c == 'A')) {
     if (gs.ship.coords.x > SHIP_MIN_X)
       gs.ship.coords.x -= gs.ship.speed;
   }
 
-  /* Fire - PA8 */
-  if ((GPIOA->IDR & (1 << 8)) == 0) {
+  /* Fire – PA8 or SPACE or W */
+  if (((GPIOA->IDR & (1 << 8)) == 0) || (c == ' ') || (c == 'w') ||
+      (c == 'W')) {
     if (gs.bullet.state == BULLET_READY) {
       gs.bullet.state = BULLET_FIRE;
       start_sound_effect_ch1(shoot_notes, shoot_times, shoot_note_count, 0);
     }
   }
 
-  if ((GPIOA->IDR & (1 << 11)) == 0) {
+  /* Pause - PA11 or D*/
+  if ((GPIOA->IDR & (1 << 11)) == 0 || (c == 'd') || (c == 'D')) {
     delay(50);
     *ps = PAUSE;
   }
+
+  /* Corner Button ==>  Main Menu*/
 
   if ((GPIOA->IDR & (1 << 9)) == 0) {
     delay(50);
@@ -1248,7 +1287,8 @@ static void handleInput(PlayingState* ps, AppState* as) {
   }
 }
 
-/* --- Alien movement / firing --------------------------------------------- */
+/* --- Alien movement / firing ---------------------------------------------
+ */
 static int isAlienGridMt(void) {
   AlienGrid* ag = &gs.aliens;
   for (int i = 0; i < ALIEN_ROWS; i++) {
@@ -1294,8 +1334,8 @@ static void moveAliens(uint32_t now) {
     /* Hit a wall: drop down, reverse direction, no horizontal step */
 
     // random fire on wall hit,
-    // TODO: take this function out and only run in certain interval instead of
-    // every wall hit...
+    // TODO: take this function out and only run in certain interval instead
+    // of every wall hit...
     for (int j = 0; j < ALIEN_COLS; j++) {
       if (ag->ab[j].state == BULLET_READY && shouldFire(12))
         ag->ab[j].state = BULLET_FIRE;
@@ -1333,7 +1373,8 @@ static void updateAlienFire(uint32_t now) {
   }
 }
 
-/* --- Collision / bullet state -------------------------------------------- */
+/* --- Collision / bullet state --------------------------------------------
+ */
 static int checkCollision(uint16_t o1X,
                           uint16_t o1Y,
                           uint16_t o1w,
@@ -1487,7 +1528,8 @@ static int checkGameOver(void) {
   return 0;
 }
 
-/* --- Rendering ------------------------------------------------------------ */
+/* --- Rendering ------------------------------------------------------------
+ */
 /*
  * renderAliens - full grid redraw.
  * Used at startup, level reset, and after every move tick.
