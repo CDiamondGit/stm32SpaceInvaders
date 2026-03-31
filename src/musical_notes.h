@@ -109,3 +109,4 @@
 #define A8	7040
 #define AS8_Bb8	7459
 #define B8	7902
+#define REST 0
