@@ -11,6 +11,11 @@
 #include "serial.h"
 #include "sound_effects.h"
 
+/*----GAME
+ * FUNCTIONALITY------------------------------------------______---------------------*/
+#define SCORE_INC 10
+#define MAX_RECORDS 5
+
 /* --- Screen --------------------------------------------------------------- */
 #define SCREEN_W 128
 #define SCREEN_H 160
@@ -92,6 +97,11 @@ typedef struct {
   uint16_t speed;
 } Bullet;
 
+typedef struct {
+  char initials[4]; /* 3 letters + null terminator */
+  uint32_t score;
+} ScoreRecord;
+
 /* --- Alien formation ------------------------------------------------------ */
 typedef struct {
   int16_t offsetX, offsetY;
@@ -112,6 +122,8 @@ typedef struct {
   Bullet bullet;
   AlienGrid aliens;
   int lives;
+  int score;
+  int highScore;
 } GameState;
 
 /* --- App / gameplay states ------------------------------------------------ */
@@ -172,11 +184,11 @@ static void resetGame(void);
 /* --- Menu / app state screens -------------------------------------------- */
 void mainMenu(AppState* as);
 void help(AppState* as);
-void getPause(PlayingState* ps);
+void getPause(PlayingState* ps, AppState* as);
 void playing(AppState* as);
 
 /* --- Input ---------------------------------------------------------------- */
-static void handleInput(void);
+static void handleInput(PlayingState* ps, AppState* as);
 
 /* --- Alien movement / firing --------------------------------------------- */
 static int isAlienGridMt(void);
@@ -210,12 +222,15 @@ static void renderPlayerBullet(void);
 static void renderAlienBullets(void);
 static void renderBarricade(void);
 static void renderScene(void);
+static void renderStats(void);
+static void renderGameOverScreen(PlayingState* ps, AppState* as);
 
 /*
  * GLOBAL DECLARATIONS
  */
 
-/* --- Sound engine state --------------------------------------------------- */
+/* --- Sound engine state
+   --------------------------------------------------- */
 volatile const uint32_t* channel1_notes = 0;
 volatile const uint32_t* channel1_times = 0;
 volatile uint32_t channel1_note_count = 0;
@@ -232,9 +247,9 @@ volatile uint32_t channel2_note_index = 0;
 volatile int32_t channel2_note_timer = 0;
 
 /* --- Background music state ---------------------------------------------- */
-static const uint32_t background_notes[] = {C7, B6, AS6_Bb6, A6};
+static const uint32_t background_notes[] = {C6, B6, AS6_Bb6, A6};
 static const uint32_t background_times[] = {850, 850, 850, 850};
-static const uint32_t background_note_count = 4;
+static const uint32_t background_note_count = 4;  // 4
 volatile uint32_t background_tempo_ms = 420;
 
 /* --- Sound effect data ---------------------------------------------------- */
@@ -262,6 +277,10 @@ AppState currentAppState = MAINMENU;
 
 static GameState gs;
 static uint32_t randState;
+
+static ScoreRecord records[MAX_RECORDS] = {
+    {"___", 0000}, {"___", 0000}, {"___", 0000}, {"___", 0000}, {"___", 0000},
+};
 
 /*
  * ASSET DECLARATIONS
@@ -305,17 +324,7 @@ static const uint16_t blueAlienBoth[][88] = {
      0,     0,     0,     0,     41187, 0,     41187, 0,     0,     0,
      41187, 41187, 0,     41187, 41187, 0,     0,     0}};
 static const uint16_t redAlien[][88] = {
-    {
-        0,     0,     65320, 0,     0,     0,     0,     0,     65320, 0,
-        0,     0,     0,     0,     65320, 0,     0,     0,     65320, 0,
-        0,     0,     0,     0,     65320, 65320, 65320, 65320, 65320, 65320,
-        65320, 0,     0,     0,     65320, 65320, 0,     65320, 65320, 65320,
-        0,     65320, 65320, 0,     65320, 65320, 65320, 65320, 65320, 65320,
-        65320, 65320, 65320, 65320, 65320, 65320, 0,     65320, 65320, 65320,
-        65320, 65320, 65320, 65320, 0,     65320, 65320, 0,     65320, 0,
-        0,     0,     0,     0,     65320, 0,     65320, 0,     0,     0,
-        65320, 65320, 0,     65320, 65320, 0,     0,     0,
-    },
+
     {
         0,     0,     65320, 0,     0,     0,     0,     0,     65320, 0,
         0,     65320, 0,     0,     65320, 0,     0,     0,     65320, 0,
@@ -326,6 +335,17 @@ static const uint16_t redAlien[][88] = {
         65320, 65320, 65320, 65320, 65320, 0,     0,     0,     65320, 0,
         0,     0,     0,     0,     65320, 0,     0,     0,     65320, 0,
         0,     0,     0,     0,     0,     0,     65320, 0,
+    },
+    {
+        0,     0,     65320, 0,     0,     0,     0,     0,     65320, 0,
+        0,     0,     0,     0,     65320, 0,     0,     0,     65320, 0,
+        0,     0,     0,     0,     65320, 65320, 65320, 65320, 65320, 65320,
+        65320, 0,     0,     0,     65320, 65320, 0,     65320, 65320, 65320,
+        0,     65320, 65320, 0,     65320, 65320, 65320, 65320, 65320, 65320,
+        65320, 65320, 65320, 65320, 65320, 65320, 0,     65320, 65320, 65320,
+        65320, 65320, 65320, 65320, 0,     65320, 65320, 0,     65320, 0,
+        0,     0,     0,     0,     65320, 0,     65320, 0,     0,     0,
+        65320, 65320, 0,     65320, 65320, 0,     0,     0,
     }};
 static const uint16_t greenAlien[][88] = {
     {0,     0,     51975, 0,     0,     0,     0,     0,     51975, 0,
@@ -387,7 +407,9 @@ int main(void) {
         delay(500);
         playing(&currentAppState);
         break;
-
+      case RECORD:
+        showScoreBoard(&currentAppState);
+        break;
       default:
         break;
     }
@@ -608,16 +630,35 @@ static void setupIO(void) {
   RCC->AHBENR |= (1 << 18) | (1 << 17);
   display_begin();
   pinMode(GPIOB, 4, 0);
-  enablePullUp(GPIOB, 4); /* right – PB4  */
+  enablePullUp(GPIOB, 4); /* right - PB4  */
   pinMode(GPIOB, 5, 0);
-  enablePullUp(GPIOB, 5); /* left  – PB5  */
+  enablePullUp(GPIOB, 5); /* left  - PB5  */
   pinMode(GPIOA, 8, 0);
-  enablePullUp(GPIOA, 8); /* fire  – PA8  */
+  enablePullUp(GPIOA, 8); /* fire  - PA8  */
   pinMode(GPIOA, 11, 0);
-  enablePullUp(GPIOA, 11); /* down  – PA11 */
+  enablePullUp(GPIOA, 11); /* down  - PA11 */
+  pinMode(GPIOA, 2, 1);    /* Lives indicator 1 - PA9*/
+  pinMode(GPIOA, 1, 1);    /* Lives indicator 1 - PA10*/
+  pinMode(GPIOB, 3, 1);    /* Lives indicator 1 - PC15*/
+  pinMode(GPIOA, 9, 0);    /* Reset Button */
+  enablePullUp(GPIOA, 9);
 }
 
-/* --- Utility / timing / random ------------------------------------------- */
+static void lightLivesIndicator(int lives) {
+  // Clear LEDs
+  GPIOA->ODR &= ~((1 << 2) | (1 << 1));
+  GPIOB->ODR &= ~(1 << 3);
+
+  // temp
+  // GPIOC->ODR |= (1 << 3);
+
+  // Set LEDs based on lives
+  GPIOA->ODR |= (lives >= 1) ? (1 << 1) : 0;
+  GPIOB->ODR |= (lives >= 2) ? (1 << 3) : 0;
+  GPIOA->ODR |= (lives == 3) ? (1 << 2) : 0;
+}
+/* --- Utility / timing / random -------------------------------------------
+ */
 void delay(volatile uint32_t ms) {
   uint32_t end = ms + milliseconds;
   while (milliseconds != end)
@@ -657,7 +698,7 @@ int isInside(uint16_t x1,
 
 /* --- Background / screen helpers ----------------------------------------- */
 void loadBackground() {
-  printTextBold("Space", 10, 10, , 0);
+  printTextBold("Space", 10, 10, 1, 0);
   printTextBold("Invader", 40, 20, 1, 0);
 
   // putImage(0, 0, 128, 50, top_background, 1, 0);
@@ -688,7 +729,7 @@ static void parkAlienBullet(int col) {
     return;
   }
 
-  b->coords.x = b->coords.y =
+  b->coords.x = b->coords.oldX =
       (uint16_t)(ag->offsetX + ag->basePosX[col] + BULLET_OFFSET_X);
   b->coords.y = b->coords.oldY =
       (uint16_t)(ag->offsetY + ag->basePosY[row] + ALIEN_H);
@@ -725,13 +766,14 @@ static void initAlienGrid() {
   }
 }
 static void initGameState(void) {
-  /* Ship */
-  gs.lives = 3;
+  gs.highScore = records[0].score;
+  randState = milliseconds | 1; /* Ship */
+
   gs.ship.coords.x = gs.ship.coords.oldX = 58;
   gs.ship.coords.y = gs.ship.coords.oldY = 130;
   gs.ship.speed = SHIP_SPEED;
 
-  /* Bullet – parked at muzzle */
+  /* Bullet - parked at muzzle */
   gs.bullet.coords.x = gs.bullet.coords.oldX =
       gs.ship.coords.x + BULLET_OFFSET_X;
   gs.bullet.coords.y = gs.bullet.coords.oldY =
@@ -752,9 +794,8 @@ static void resetGame(void) {
   /* Redraw the initial scene */
   renderAliens();
   putImage(gs.ship.coords.x, gs.ship.coords.y, SHIP_W, SHIP_H, spaceShip, 1, 0);
-  gs.lives -= 1;
   start_background_music();
-  /* HUD line stays – was never erased */
+  /* HUD line stays - was never erased */
 }
 
 /* --- Menu / app state screens -------------------------------------------- */
@@ -796,14 +837,14 @@ void mainMenu(AppState* as) {
     if ((GPIOA->IDR & (1 << 11)) == 0) {
       if (selectedOption < 2) {
         selectedOption++;
-        delay(100);
+        delay(200);
       }
     }
 
     if ((GPIOA->IDR & (1 << 8)) == 0) {
       if (selectedOption > 0) {
         selectedOption--;
-        delay(100);
+        delay(200);
       }
     }
 
@@ -844,11 +885,241 @@ void help(AppState* as) {
     }
   }
 }
-void getPause(PlayingState* ps) {}
+
+void showScoreBoard(AppState* as) {
+  clearDisplay();
+
+  /* --- Heading ---------------------------------------------------------- */
+  uint16_t headingColor = RGBToWord(255, 215, 0);  /* gold              */
+  uint16_t normalColor = RGBToWord(255, 255, 255); /* white             */
+  uint16_t topColor = RGBToWord(255, 215, 0);      /* gold for top score*/
+  uint16_t rowColor = RGBToWord(180, 180, 180);    /* grey for rest     */
+
+  printTextBold("SCOREBOARD", 5, 5, headingColor, 0);
+
+  /* --- Divider ---------------------------------------------------------- */
+  drawLine(0, 20, SCREEN_W, 20, headingColor);
+
+  /* --- Column headers --------------------------------------------------- */
+  printText("NAME", 10, 26, normalColor, 0);
+  printText("SCORE", 80, 26, normalColor, 0);
+  drawLine(0, 35, SCREEN_W, 35, RGBToWord(80, 80, 80));
+
+  /* --- Rows ------------------------------------------------------------- */
+  for (int i = 0; i < MAX_RECORDS; i++) {
+    uint16_t y = (uint16_t)(42 + i * 18);
+    uint16_t color = (i == 0) ? topColor : rowColor;
+
+    char number = (i + 1) + '0';
+    char index[2] = {number, '\0'};
+
+    /* Rank number */
+    printText(index, 1, y, color, 0);
+    printText(".", 8, y, color, 0);
+
+    /* Initials */
+    printText(records[i].initials, 18, y, color, 0);
+
+    /* Score – right aligned at x=80 */
+    printNumber(records[i].score, 80, y, color, 0);
+
+    /* Underline each row */
+    drawLine(0, (uint16_t)(y + 12), SCREEN_W, (uint16_t)(y + 12),
+             RGBToWord(40, 40, 40));
+  }
+
+  /* --- Footer ----------------------------------------------------------- */
+  drawLine(0, 148, SCREEN_W, 148, headingColor);
+  printText("DOWN to go back", 10, 152, RGBToWord(100, 100, 100), 0);
+
+  /* --- Wait for down button to exit ------------------------------------- */
+  while ((GPIOA->IDR & (1 << 11)) != 0)
+    ; /* wait for press  */
+  delay(50);
+  while ((GPIOA->IDR & (1 << 11)) == 0)
+    ; /* wait for release */
+  delay(50);
+
+  *as = MAINMENU;
+
+  return;
+}
+
+void getPause(PlayingState* ps, AppState* as) {
+  uint16_t pinkColor = RGBToWord(255, 20, 147);
+
+  int selected = 0; /* 0 = Resume, 1 = Main Menu */
+  if (*ps == GAMEOVER) {
+    clearDisplay();
+    printTextBold("GAMEOVER!!", 5, 10, RGBToWord(255, 255, 0), 0);
+
+    ScoreRecord newEntry;
+    char alpha = 'A';
+    char alphaStr[2] = {alpha, '\0'};
+    int position = 0;
+    char initials[4] = {'_', '_', '_', '\0'};
+
+    if (gs.score > gs.highScore) {
+      printText("New Highscore", 20, 22, RGBToWord(255, 255, 255), 0);
+      printTextX2(initials, 50, 40, RGBToWord(255, 255, 0), 0);
+      printTextX2("<", 40, 60, pinkColor, 0);
+      printTextX2(alphaStr, 60, 60, pinkColor, 0);
+      printTextX2(">", 80, 60, pinkColor, 0);
+
+      printText("< > : Navigate", 10, 92, RGBToWord(255, 255, 255), 0);
+      printText("UP : Select", 10, 102, RGBToWord(255, 255, 255), 0);
+      printText("Corner : Reset", 10, 112, RGBToWord(255, 255, 255), 0);
+
+      printText("Press down key", 10, 125, RGBToWord(255, 255, 255), 0);
+      printText("To save and exit", 10, 135, RGBToWord(255, 255, 255), 0);
+
+      while (1) {
+        if (!(GPIOA->IDR & (1 << 11))) {  // down key to save and exit
+          /* Quit to main menu */
+          goto save_and_exit;
+        }
+
+        /* right button to select letters-------------- PB4*/
+
+        if (!(GPIOB->IDR & (1 << 4))) {  // right key
+          alpha = (alpha >= 'Z') ? 'A' : alpha + 1;
+          alphaStr[0] = alpha;
+          fillRectangle(60, 60, 14, 16, 0);
+          printTextX2(alphaStr, 60, 60, pinkColor, 0);
+          delay(150);
+        }
+
+        /* left button to select letters-------------- PB5*/
+
+        if (!(GPIOB->IDR & (1 << 5))) {  // left key
+          alpha = (alpha <= 'A') ? 'Z' : alpha - 1;
+          alphaStr[0] = alpha;
+          fillRectangle(60, 60, 14, 16, 0);
+          printTextX2(alphaStr, 60, 60, pinkColor, 0);
+          delay(150);
+        }
+
+        /* Corner button to reset the namespace -------------- PA9*/
+        if (!(GPIOA->IDR & (1 << 9))) {
+          alpha = 'A';
+          alphaStr[0] = alpha;
+          position = 0;
+          initials[0] = '_';
+          initials[1] = '_';
+          initials[2] = '_';
+          printTextX2(initials, 50, 40, RGBToWord(255, 255, 0), 0);
+          printTextX2(alphaStr, 60, 60, pinkColor, 0);
+        }
+
+        /* UP button to select letter to the current position*/
+        if (!(GPIOA->IDR & (1 << 8))) {
+          if (position >= 3)
+            continue;
+          initials[position] = alpha;
+          position++;
+
+          fillRectangle(50, 40, 70, 16, 0);
+          printTextX2(initials, 50, 40, RGBToWord(255, 255, 0), 0);
+
+          alpha = 'A';
+          alphaStr[0] = alpha;
+          fillRectangle(60, 60, 14, 16, 0);
+          printTextX2(alphaStr, 60, 60, pinkColor, 0);
+
+          delay(200);
+        }
+      }
+    save_and_exit:
+
+      /* Save to leaderboard */
+
+      newEntry.initials[0] = initials[0];
+      newEntry.initials[1] = initials[1];
+      newEntry.initials[2] = initials[2];
+      newEntry.initials[3] = '\0';
+      newEntry.score = gs.score;
+
+      for (int i = 0; i < MAX_RECORDS; i++) {
+        if (newEntry.score > records[i].score) {
+          for (int k = MAX_RECORDS - 1; k > i; k--)
+            records[k] = records[k - 1];
+          records[i] = newEntry;
+          break;
+        }
+      }
+
+      if (gs.score > gs.highScore) {
+        gs.highScore = gs.score;
+      }
+      gs.score = 0;
+      stop_sound_effect_ch1();
+      stop_sound_effect_ch2();
+      *ps = GAMERUNNING;
+      *as = MAINMENU;
+      return;
+    } else {
+      while (1) {
+        putImage(55, 20, 11, 8, blueAlienBoth[1], 0, 1);
+        printText("Press down key", 10, 125, RGBToWord(255, 255, 255), 0);
+        printText("to go to main menu", 10, 135, RGBToWord(255, 255, 255), 0);
+      }
+    }
+  } else {
+    stop_sound_effect_ch2();
+    /* Draw pause menu */
+    fillRectangle(0, 60, SCREEN_W, 50, 0);
+    printTextBold("PAUSED", 35, 65, RGBToWord(255, 255, 0), 0);
+    printText("> Resume", 10, 82, RGBToWord(255, 255, 255), 0);
+    printText("  Main Menu", 10, 94, RGBToWord(255, 255, 255), 0);
+
+    /* Wait for button release first (debounce the PA11 press that got us here)
+     */
+    while ((GPIOA->IDR & (1 << 11)) == 0)
+      ;
+    delay(50);
+
+    while (1) {
+      /* Highlight selected option */
+      printText(selected == 0 ? "> Resume   " : "  Resume   ", 10, 82,
+                RGBToWord(255, 255, 255), 0);
+      printText(selected == 1 ? "> Main Menu" : "  Main Menu", 10, 94,
+                RGBToWord(255, 255, 255), 0);
+
+      /* Down button - move selection down */
+      if ((GPIOA->IDR & (1 << 11)) == 0) {
+        selected = !selected; /* toggle between 0 and 1 */
+        delay(150);           /* debounce                */
+      }
+
+      /* Fire/confirm button - PA8 */
+      if ((GPIOA->IDR & (1 << 8)) == 0) {
+        delay(50);
+        if (selected == 0) {
+          /* Resume */
+          fillRectangle(0, 60, SCREEN_W, 50, 0);
+          start_background_music();
+          *ps = GAMERUNNING;
+          return;
+        } else {
+          /* Quit to main menu */
+          stop_sound_effect_ch1();
+          stop_sound_effect_ch2();
+          *as = MAINMENU;
+          *ps = GAMERUNNING; /* reset state for next play session */
+          return;
+        }
+      }
+    }
+  }
+}
+
 void playing(AppState* as) {
   clearDisplay();
 
   /* Game */
+  gs.lives = 1;  // temp
+  gs.score = 0;
+
   initGameState();
 
   delay(300);
@@ -861,104 +1132,119 @@ void playing(AppState* as) {
   start_background_music();
 
   PlayingState currentPlayingState = GAMERUNNING;
-  int done = 0;
+  /* Game loop */
+  while (1) {
+    uint32_t now = milliseconds;
+    if (now - lastUpdate < FRAME_DELAY)
+      continue;
+    lastUpdate = now;
 
-  while (!done) {
-    int done2 = 0;
-    switch (currentPlayingState) {
-      case GAMERUNNING:
-
-        /* Game loop */
-        while (1) {
-          uint32_t now = milliseconds;
-          if (now - lastUpdate < FRAME_DELAY)
-            continue;
-          lastUpdate = now;
-
-          if (gs.lives == 0)
-            return;
-
-          /* Advance bullet */
-          if (gs.bullet.state == BULLET_FIRE) {
-            gs.bullet.coords.y -= gs.bullet.speed;
-            if (gs.bullet.coords.y < 5) {
-              resetPlayerBullet();
-              // renderPlayerBullet();
-            }
-          } else {
-            gs.bullet.coords.x = gs.ship.coords.x + BULLET_OFFSET_X;
-            gs.bullet.coords.y = gs.ship.coords.y - BULLET_OFFSET_Y;
-          }
-
-          AlienGrid* ag = &gs.aliens;
-
-          for (int j = 0; j < ALIEN_COLS; j++) {
-            Bullet* b = &ag->ab[j];
-            if (b->state == BULLET_FIRE) {
-              b->coords.y += b->speed; /* alien bullets go DOWN */
-              if (b->coords.y > HUD_LINE_Y - 5)
-                resetAlienBullet(j);
-            }
-            /* READY bullets track the grid in moveAliens/parkAlienBullet */
-          }
-
-          handleInput();   /* buttons-> positions*/
-          moveAliens(now); /* now = time, timer-> alien grid shift */
-          // updateAlienFire(now);
-          update_background_music(now);
-          updatePlayerCollision(); /* bullet    -> alien grid       */
-          /*
-          TODO :
-          implement alien bullet. | redrawing every alien that has overlapped
-          with bullet
-          */
-
-          if (updateAlienBulletCollision()) {
-            resetGame();
-            continue;
-          }
-
-          if (checkGameOver()) {
-            stop_sound_effect_ch1();
-            stop_sound_effect_ch2();
-            resetGame();
-            continue;
-          }
-          renderScene(); /* positions -> screen           */
-        }
-        break;
-      case PAUSE:
-        *as = MAINMENU;
-        done = 1;
-        break;
-      case GAMEOVER:
-        break;
-      default:
-        break;
+    if (currentPlayingState == PAUSE) {
+      getPause(&currentPlayingState, as);
+      continue; /* skip this frame, resume next tick */
     }
+
+    /* Advance bullet */
+    if (gs.bullet.state == BULLET_FIRE) {
+      gs.bullet.coords.y -= gs.bullet.speed;
+      if (gs.bullet.coords.y < 5) {
+        resetPlayerBullet();
+        // renderPlayerBullet();
+      }
+    } else {
+      gs.bullet.coords.x = gs.ship.coords.x + BULLET_OFFSET_X;
+      gs.bullet.coords.y = gs.ship.coords.y - BULLET_OFFSET_Y;
+    }
+
+    AlienGrid* ag = &gs.aliens;
+
+    for (int j = 0; j < ALIEN_COLS; j++) {
+      Bullet* b = &ag->ab[j];
+      if (b->state == BULLET_FIRE) {
+        b->coords.y += b->speed; /* alien bullets go DOWN */
+        if (b->coords.y > HUD_LINE_Y - 5)
+          resetAlienBullet(j);
+      }
+      /* READY bullets track the grid in moveAliens/parkAlienBullet */
+    }
+
+    handleInput(&currentPlayingState, as); /* buttons-> positions*/
+
+    if (*as == MAINMENU)
+      return;
+
+    if (currentPlayingState == PAUSE) {
+      getPause(&currentPlayingState, as);
+      if (*as == MAINMENU)
+        return; /* quit was selected */
+      continue;
+    }
+    moveAliens(now); /* now = time, timer-> alien grid shift */
+    updateAlienFire(now);
+    update_background_music(now);
+    updatePlayerCollision(); /* bullet    -> alien grid       */
+    /*
+    TODO :
+    implement alien bullet. | redrawing every alien that has overlapped
+    with bullet
+    */
+
+    if (updateAlienBulletCollision()) {
+      gs.lives -= 1;
+      putImage(gs.ship.coords.x, gs.ship.coords.y, ALIEN_W, ALIEN_H, explosion,
+               1, 0);
+      delay(50);
+      start_sound_effect_ch1(explode_notes, explode_times, explode_note_count,
+                             0);
+      resetGame();
+      continue;
+    }
+
+    if (checkGameOver()) {
+      gs.lives -= 1;
+      currentPlayingState = GAMEOVER;
+      lightLivesIndicator(gs.lives);
+      stop_sound_effect_ch1();
+      stop_sound_effect_ch2();
+      renderGameOverScreen(&currentPlayingState, as);
+      continue;
+    }
+    renderScene(); /* positions -> screen           */
+    lightLivesIndicator(gs.lives);
   }
 }
 
 /* --- Input ---------------------------------------------------------------- */
-static void handleInput(void) {
-  /* Right – PB4 */
+static void handleInput(PlayingState* ps, AppState* as) {
+  /* Right - PB4 */
   if ((GPIOB->IDR & (1 << 4)) == 0) {
     if (gs.ship.coords.x < SHIP_MAX_X)
       gs.ship.coords.x += gs.ship.speed;
   }
 
-  /* Left – PB5 */
+  /* Left - PB5 */
   if ((GPIOB->IDR & (1 << 5)) == 0) {
     if (gs.ship.coords.x > SHIP_MIN_X)
       gs.ship.coords.x -= gs.ship.speed;
   }
 
-  /* Fire – PA8 */
+  /* Fire - PA8 */
   if ((GPIOA->IDR & (1 << 8)) == 0) {
     if (gs.bullet.state == BULLET_READY) {
       gs.bullet.state = BULLET_FIRE;
       start_sound_effect_ch1(shoot_notes, shoot_times, shoot_note_count, 0);
     }
+  }
+
+  if ((GPIOA->IDR & (1 << 11)) == 0) {
+    delay(50);
+    *ps = PAUSE;
+  }
+
+  if ((GPIOA->IDR & (1 << 9)) == 0) {
+    delay(50);
+    *ps = PAUSE;
+    *as = MAINMENU;
   }
 }
 
@@ -1000,8 +1286,6 @@ static void moveAliens(uint32_t now) {
 
   ag->oldOffsetX = ag->offsetX;
   ag->oldOffsetY = ag->offsetY;
-
-  printNumber(ag->offsetY + ag->basePosY[2], 0, 0, 1, 0);
 
   int16_t nextX = ag->offsetX + (ALIEN_STEP * ag->dirX);
   ag->earToggle = !ag->earToggle;
@@ -1143,8 +1427,6 @@ static void updatePlayerCollision(void) {
       uint16_t ax = (uint16_t)(ag->offsetX + ag->basePosX[j]);
       uint16_t ay = (uint16_t)(ag->offsetY + ag->basePosY[i]);
 
-      // printNumber(ay + ALIEN_H, 0, 0, 1, 0);
-
       if (checkCollision(ax, ay, ALIEN_W, ALIEN_H, gs.bullet.coords.x,
                          gs.bullet.coords.y, BULLET_W, BULLET_H)) {
         putImage(ax, ay, ALIEN_W, ALIEN_H, explosion, 1, 0);
@@ -1158,6 +1440,10 @@ static void updatePlayerCollision(void) {
         /* Park the alien bullet for this column (shooter is dead) */
         resetAlienBullet(j);
         resetPlayerBullet();
+
+        /* Increase the score..... */
+
+        gs.score += SCORE_INC;
         return; /* one hit per frame */
       }
     }
@@ -1166,8 +1452,12 @@ static void updatePlayerCollision(void) {
 static int checkGameOver(void) {
   uint16_t lowestY = getLowestAlienY();
 
+  if (gs.lives == 0) {
+    return 1;
+  }
+
   if (lowestY == 0)
-    return 0; /* no aliens left – nothing to check */
+    return 0; /* no aliens left - nothing to check */
 
   /* Condition 1: aliens reached the HUD line */
   if (lowestY >= HUD_LINE_Y)
@@ -1199,18 +1489,18 @@ static int checkGameOver(void) {
 
 /* --- Rendering ------------------------------------------------------------ */
 /*
- * renderAliens – full grid redraw.
+ * renderAliens - full grid redraw.
  * Used at startup, level reset, and after every move tick.
  *
  * On a move tick the dirty-strip strategy is used:
  *   1. Erase the vacated edge strip (one fillRectangle call).
- *   2. Blit only alive aliens – dead cells stay black automatically
+ *   2. Blit only alive aliens - dead cells stay black automatically
  *      because the strip erase already cleared them.
  */
 static void renderAliens(void) {
   AlienGrid* ag = &gs.aliens;
 
-  /* Nothing changed this frame – skip entirely */
+  /* Nothing changed this frame - skip entirely */
   if (ag->offsetX == ag->oldOffsetX && ag->offsetY == ag->oldOffsetY)
     return;
 
@@ -1304,13 +1594,27 @@ static void renderAlienBullets(void) {
 static void renderBarricade() {
   fillRectangle(20, 115, 20, 10, 51975);
 }
+
+static void renderGameOverScreen(PlayingState* ps, AppState* as) {
+  getPause(ps, as);
+}
+
+static void renderStats(void) {
+  printText("S:", 83, HUD_LINE_Y + 5, RGBToWord(128, 0, 128), 0);
+  printNumber((uint16_t)gs.score, 95, HUD_LINE_Y + 5, RGBToWord(128, 0, 128),
+
+              0);
+  printText("HS:", 2, HUD_LINE_Y + 5, RGBToWord(128, 0, 128), 0);
+  printNumber((uint16_t)gs.highScore, 22, HUD_LINE_Y + 5,
+              RGBToWord(128, 0, 128), 0);
+}
 /*
 Top-level render dispatcher
 */
 static void renderScene(void) {
-  renderBarricade();
   renderAliens(); /* no-op internally if grid didn't move this frame */
   renderShip();
   renderPlayerBullet();
   renderAlienBullets();
+  renderStats();
 }
