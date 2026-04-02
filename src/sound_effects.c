@@ -3,9 +3,6 @@
 #include "musical_notes.h"
 #include "display.h"
 void pinMode(GPIO_TypeDef *Port, uint32_t BitNumber, uint32_t Mode);
-void initSound(void);
-void playNote(uint32_t freq);
-void stopSound(void);
 
 void initSound(void)
 {
@@ -22,7 +19,6 @@ void initSound(void)
 	TIM14->CCR1 = TIM14->ARR/2;	
 	TIM14->CNT = 0;
 }
-
 void playNote(uint32_t freq)
 {
     // Counter is running at 65536 Hz 
@@ -31,12 +27,10 @@ void playNote(uint32_t freq)
 	TIM14->CNT = 0; // set the count to zero initially
 	TIM14->CR1 |= (1 << 0); // and enable the counter
 }
-
 void stopSound(void)
 {
     TIM14->CR1 &= ~TIM_CR1_CEN;  // disable timer
 }
-
 void initSound2(void)
 {
     RCC->APB1ENR |= (1 << 1); // TIM3 clock
@@ -51,7 +45,6 @@ void initSound2(void)
     TIM3->CCR3 = TIM3->ARR/2;
     TIM3->CNT = 0;
 }
-
 void playNote2(uint32_t freq)
 {
     TIM3->ARR = (uint32_t)65536/((uint32_t)freq);
@@ -59,7 +52,6 @@ void playNote2(uint32_t freq)
     TIM3->CNT = 0;
     TIM3->CR1 |= (1 << 0);
 }
-
 void stopSound2(void)
 {
     TIM3->CR1 &= ~TIM_CR1_CEN;
