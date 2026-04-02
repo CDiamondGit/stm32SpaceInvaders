@@ -5,11 +5,14 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <time.h>
+#include <stdlib.h>
 #include <stm32f031x6.h>
 #include "display.h"
 #include "musical_notes.h"
 #include "serial.h"
 #include "sound_effects.h"
+
 
 /*----GAME
  * FUNCTIONALITY------------------------------------------______---------------------*/
@@ -70,6 +73,22 @@
 
 #define ALIEN_FIRE_MIN_MS 800
 #define ALIEN_FIRE_MAX_MS 3000
+
+
+/* --- Loading Bar ----------------------------------------------------------- */
+#define LBAR_X       20
+#define LBAR_Y       100
+#define LBAR_W       200
+#define LBAR_H       20
+
+#define LBAR_BACKGROUND      0x0000   // black (bakcground)
+#define LBAR_FILL    0x07E0   // green
+
+#define STAR_RED    63680
+#define STAR_BLUE   1119
+#define STAR_WHITE  65535
+
+
 
 /*
  * TYPE DECLARATIONS
@@ -218,6 +237,8 @@ static void renderBarricade(void);
 static void renderScene(void);
 static void renderStats(void);
 static void renderGameOverScreen(PlayingState* ps, AppState* as);
+static void splashScreen();
+static void makeBackground(int starCount);
 
 /*
  * GLOBAL DECLARATIONS
@@ -279,6 +300,8 @@ static uint32_t randState;
 static ScoreRecord records[MAX_RECORDS] = {
     {"___", 0000}, {"___", 0000}, {"___", 0000}, {"___", 0000}, {"___", 0000},
 };
+
+
 
 /*
  * ASSET DECLARATIONS
@@ -388,6 +411,7 @@ int main(void) {
   initSound();
   initSound2();
 
+  splashScreen();
   // Game Begins
   while (1) {
     // Switch statement for our Game State
@@ -673,6 +697,7 @@ int isInside(uint16_t x1,
 
 /* --- Background / screen helpers ----------------------------------------- */
 void loadBackground() {
+  makeBackground(40);
   printTextBold("Space", 10, 10, 1, 0);
   printTextBold("Invader", 40, 20, 1, 0);
 
@@ -1630,4 +1655,63 @@ static void renderScene(void) {
   renderPlayerBullet();
   renderAlienBullets();
   renderStats();
+}
+
+
+static void makeBackground(int starCount) {
+
+  srand(time(NULL));
+
+ for (uint16_t i = 0; i < starCount; ++i) {
+        uint16_t x = (uint16_t)(rand() % SCREEN_W);
+        uint16_t y = (uint16_t)(rand() % SCREEN_H);
+
+        int r = rand() % 3; 
+        uint16_t colour;
+        if (r==0) {
+          colour = STAR_RED;
+        } else if (r==1) {
+          colour = STAR_BLUE;
+        } else {
+          colour = STAR_WHITE;
+        }
+
+        putPixel(x, y, colour);
+    }
+
+
+}
+
+
+/*
+Splash screen with loading bar
+*/
+
+ static void splashScreen() {
+    // Clear display as precaution
+    clearDisplay();
+
+    //Create the starry background
+    makeBackground(30);
+
+    // Create loadedBit variable to make the amount of bit variables there will be (Make it progress smoothly)
+    const int loadedBit = 50;
+    // Pixels loaded per individual loaded bit
+    const uint16_t bitWidth = LBAR_W / loadedBit;
+    // delay until three seconds
+    const uint16_t delayMs = 3000 / loadedBit;
+
+   //Draw the bar background
+    drawRectangle(LBAR_X, LBAR_Y, LBAR_W, LBAR_H, LBAR_BACKGROUND);
+
+  //Animate the filling of the background
+    for (int i = 0; i <= loadedBit; i++) {
+
+        int w = i * bitWidth;
+
+        // Draw the filled percentage 
+        drawRectangle(LBAR_X, LBAR_Y, w, LBAR_H, LBAR_FILL);
+        // Delay to make look like loading
+        delay(delayMs);
+    }
 }
