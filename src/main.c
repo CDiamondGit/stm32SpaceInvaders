@@ -5,14 +5,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <time.h>
 #include <stdlib.h>
 #include <stm32f031x6.h>
+#include <time.h>
 #include "display.h"
 #include "musical_notes.h"
 #include "serial.h"
 #include "sound_effects.h"
-
 
 /*----GAME
  * FUNCTIONALITY------------------------------------------______---------------------*/
@@ -85,24 +84,22 @@
 #define HUD_LINE_COLOR 57351
 
 // #define ALIEN_FIRE_MIN_MS 800
-#define ALIEN_FIRE_MIN_MS 200
+#define ALIEN_FIRE_MIN_MS 800
 #define ALIEN_FIRE_MAX_MS 3000
 
+/* --- Loading Bar -----------------------------------------------------------
+ */
+#define LBAR_X 20
+#define LBAR_Y 100
+#define LBAR_W 200
+#define LBAR_H 20
 
-/* --- Loading Bar ----------------------------------------------------------- */
-#define LBAR_X       20
-#define LBAR_Y       100
-#define LBAR_W       200
-#define LBAR_H       20
+#define LBAR_BACKGROUND 0x0000  // black (bakcground)
+#define LBAR_FILL 0x07E0        // green
 
-#define LBAR_BACKGROUND      0x0000   // black (bakcground)
-#define LBAR_FILL    0x07E0   // green
-
-#define STAR_RED    63680
-#define STAR_BLUE   1119
-#define STAR_WHITE  65535
-
-
+#define STAR_RED 63680
+#define STAR_BLUE 1119
+#define STAR_WHITE 65535
 
 /*
  * TYPE DECLARATIONS
@@ -447,11 +444,11 @@ const uint32_t game_loop_note_count = 768;
 
 const uint32_t game_win_notes_ch1[4] = {C3, E3, G3, C4};
 const uint32_t game_win_times_ch1[4] = {200, 200, 200, 200};
-const uint32_t game_win_note_count_ch1 = 0;
+const uint32_t game_win_note_count_ch1 = 4;
 
 const uint32_t game_win_notes_ch2[4] = {C5, E5, G5, C6};
 const uint32_t game_win_times_ch2[4] = {200, 200, 200, 200};
-const uint32_t game_win_note_count_ch2 = 0;
+const uint32_t game_win_note_count_ch2 = 4;
 
 const uint32_t game_lose_notes_ch1[4] = {C4, B3, AS3_Bb3, A3};
 const uint32_t game_lose_times_ch1[4] = {200, 200, 200, 200};
@@ -465,7 +462,7 @@ const uint32_t lose_life_notes[2] = {FS2_Gb2, FS2_Gb2};
 const uint32_t lose_life_times[2] = {160, 160};
 const uint32_t lose_life_note_count = 2;
 
-const uint32_t aliens_spawning_notes[1] = {G6, G6, G6};
+const uint32_t aliens_spawning_notes[1] = {G6, B6, G6};
 const uint32_t aliens_spawning_times[1] = {220, 220, 220};
 const uint32_t aliens_spawning_note_count = 3;
 
@@ -482,8 +479,6 @@ static uint32_t randState;
 static ScoreRecord records[MAX_RECORDS] = {
     {"___", 0000}, {"___", 0000}, {"___", 0000}, {"___", 0000}, {"___", 0000},
 };
-
-
 
 /*
  * ASSET DECLARATIONS
@@ -1055,7 +1050,7 @@ static void initMainAlien(MainAlien* ma) {
   ma->lastMoveTime = 0;
 }
 
-static void initGameState(void) {
+static void initGameState() {
   gs.highScore = records[0].score;
   randState = milliseconds | 1; /* Ship */
 
@@ -1092,7 +1087,7 @@ static void resetGame(void) {
   fillRectangle(0, 0, SCREEN_W, HUD_LINE_Y, 0);
 
   /* Re-initialise all game state */
-  initGameState();
+  initGameState();  // 0 to preserve Alien Grid
 
   /* Redraw the initial scene */
   renderAliens();
@@ -1621,10 +1616,13 @@ void playing(AppState* as) {
       gs.lives -= 1;
       putImage(gs.ship.coords.x, gs.ship.coords.y, ALIEN_W, ALIEN_H, explosion,
                1, 0);
-      delay(50);
-      start_sound_effect_ch1(explode_notes, explode_times, explode_note_count,
-                             0);
+      // delay(200);
+      start_sound_effect_ch1(lose_life_notes, lose_life_times,
+                             lose_life_note_count, 0);
+      delay(350);
+
       resetGame();
+
       continue;
     }
 
@@ -1729,6 +1727,14 @@ static void moveAliens(uint32_t now) {
 
   ag->lastMoveTime = now;
   if (isAlienGridMt()) {
+    stop_sound_effect_ch2();  // stop music briefly
+    start_sound_effect_ch1(game_win_notes_ch1, game_win_times_ch1,
+                           game_win_note_count_ch1, 0);
+    start_sound_effect_ch2(game_win_notes_ch2, game_win_times_ch2,
+                           game_win_note_count_ch2, 0);
+    delay(900);  // let win jingle finish (4 x 200ms + buffer)
+    start_sound_effect_ch2(game_loop_notes, game_loop_times,
+                           game_loop_note_count, 1);
     initAlienGrid();
   }
 
@@ -1788,6 +1794,11 @@ static void moveMainAlien(MainAlien* ma) {
   if (!ma->active) {
     if (now >= ma->nextSpawnTime) {
       ma->active = 1;
+
+      if (channel1_notes == 0) {  // only play if ch1 is free
+        start_sound_effect_ch1(aliens_spawning_notes, aliens_spawning_times,
+                               aliens_spawning_note_count, 0);
+      }
 
       /* Random direction */
       if (xorshift32() & 1) {
@@ -2144,61 +2155,56 @@ static void renderScene(void) {
   renderStats();
 }
 
-
 static void makeBackground(int starCount) {
-
   srand(time(NULL));
 
- for (uint16_t i = 0; i < starCount; ++i) {
-        uint16_t x = (uint16_t)(rand() % SCREEN_W);
-        uint16_t y = (uint16_t)(rand() % SCREEN_H);
+  for (uint16_t i = 0; i < starCount; ++i) {
+    uint16_t x = (uint16_t)(rand() % SCREEN_W);
+    uint16_t y = (uint16_t)(rand() % SCREEN_H);
 
-        int r = rand() % 3; 
-        uint16_t colour;
-        if (r==0) {
-          colour = STAR_RED;
-        } else if (r==1) {
-          colour = STAR_BLUE;
-        } else {
-          colour = STAR_WHITE;
-        }
-
-        putPixel(x, y, colour);
+    int r = rand() % 3;
+    uint16_t colour;
+    if (r == 0) {
+      colour = STAR_RED;
+    } else if (r == 1) {
+      colour = STAR_BLUE;
+    } else {
+      colour = STAR_WHITE;
     }
 
-
+    putPixel(x, y, colour);
+  }
 }
-
 
 /*
 Splash screen with loading bar
 */
 
- static void splashScreen() {
-    // Clear display as precaution
-    clearDisplay();
+static void splashScreen() {
+  // Clear display as precaution
+  clearDisplay();
 
-    //Create the starry background
-    makeBackground(30);
+  // Create the starry background
+  makeBackground(30);
 
-    // Create loadedBit variable to make the amount of bit variables there will be (Make it progress smoothly)
-    const int loadedBit = 50;
-    // Pixels loaded per individual loaded bit
-    const uint16_t bitWidth = LBAR_W / loadedBit;
-    // delay until three seconds
-    const uint16_t delayMs = 3000 / loadedBit;
+  // Create loadedBit variable to make the amount of bit variables there will be
+  // (Make it progress smoothly)
+  const int loadedBit = 50;
+  // Pixels loaded per individual loaded bit
+  const uint16_t bitWidth = LBAR_W / loadedBit;
+  // delay until three seconds
+  const uint16_t delayMs = 3000 / loadedBit;
 
-   //Draw the bar background
-    drawRectangle(LBAR_X, LBAR_Y, LBAR_W, LBAR_H, LBAR_BACKGROUND);
+  // Draw the bar background
+  drawRectangle(LBAR_X, LBAR_Y, LBAR_W, LBAR_H, LBAR_BACKGROUND);
 
-  //Animate the filling of the background
-    for (int i = 0; i <= loadedBit; i++) {
+  // Animate the filling of the background
+  for (int i = 0; i <= loadedBit; i++) {
+    int w = i * bitWidth;
 
-        int w = i * bitWidth;
-
-        // Draw the filled percentage 
-        drawRectangle(LBAR_X, LBAR_Y, w, LBAR_H, LBAR_FILL);
-        // Delay to make look like loading
-        delay(delayMs);
-    }
+    // Draw the filled percentage
+    drawRectangle(LBAR_X, LBAR_Y, w, LBAR_H, LBAR_FILL);
+    // Delay to make look like loading
+    delay(delayMs);
+  }
 }
