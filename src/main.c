@@ -13,7 +13,9 @@
 
 /*----GAME
  * FUNCTIONALITY------------------------------------------______---------------------*/
-#define SCORE_INC 10
+#define SCORE_INC_EASY 10
+#define SCORE_INC_MED 15
+#define SCORE_INC_HARD 20
 #define MAX_RECORDS 5
 
 /* --- Screen --------------------------------------------------------------- */
@@ -58,17 +60,27 @@
 
 /* How many pixels the grid shifts per move tick, and ms between ticks */
 #define ALIEN_STEP 5
-#define ALIEN_MOVE_MS \
-  1000 /* decrease speeds up alien and increase to slow down          */
+#define ALIEN_MOVE_MS_EASY 1000
+#define ALIEN_MOVE_MS_MED 500
+#define ALIEN_MOVE_MS_HARD 200
+/* decrease speeds up alien and increase to slow down          */
 
 /* Drop distance when hitting a wall (one alien row + gap) */
 #define ALIEN_DROP (ALIEN_H + ALIEN_GAP_Y)
+
+/*---- Main alien--------------------------------------------------------*/
+
+#define MAIN_ALIEN_Y 10
+#define MAIN_ALIEN_MIN_DELAY 3000
+#define MAIN_ALIEN_MAX_DELAY 6000
+#define MAIN_ALIEN_MOVE_DELAY 70  // movement speed (lower = faster)
 
 /* --- HUD ------------------------------------------------------------------ */
 #define HUD_LINE_Y 144
 #define HUD_LINE_COLOR 57351
 
-#define ALIEN_FIRE_MIN_MS 800
+// #define ALIEN_FIRE_MIN_MS 800
+#define ALIEN_FIRE_MIN_MS 200
 #define ALIEN_FIRE_MAX_MS 3000
 
 /*
@@ -113,6 +125,15 @@ typedef struct {
   uint32_t nextFireTime[ALIEN_COLS];
 } AlienGrid;
 
+typedef struct {
+  Transform coords;
+  uint16_t speed;
+  int8_t dir;              // 1 = right, -1 = left
+  uint8_t active;          // 0 = hidden, 1 = active
+  uint32_t nextSpawnTime;  // when to appear
+  uint32_t lastMoveTime;   // movement timing
+} mainAlien;
+
 /* --- Whole game state ----------------------------------------------------- */
 typedef struct {
   Ship ship;
@@ -121,12 +142,16 @@ typedef struct {
   int lives;
   int score;
   int highScore;
+  int alienSpeed;
+  int score_inc;
+  mainAlien mysteryAlien;
 } GameState;
 
 /* --- App / gameplay states ------------------------------------------------ */
-typedef enum { MAINMENU, PLAYING, HELP, RECORD } AppState;
+typedef enum { MAINMENU, PLAYING, HELP, RECORD, MODE } AppState;
 
 typedef enum { GAMERUNNING, PAUSE, GAMEOVER } PlayingState;
+typedef enum { EASY, MEDIUM, HARD } GameMode;
 
 /*
  * FUNCTION PROTOTYPES
@@ -157,6 +182,7 @@ void delay(volatile uint32_t ms);
 uint32_t xorshift32(void);
 static uint8_t shouldFire(uint8_t threshold);
 static uint32_t randomFireDelay(void);
+static uint32_t randomMainAlienDelay(void);
 uint8_t get_random_bit(uint32_t* state);
 int isInside(uint16_t x1,
              uint16_t y1,
@@ -180,8 +206,11 @@ void mainMenu(AppState* as);
 void help(AppState* as);
 void getPause(PlayingState* ps, AppState* as);
 void playing(AppState* as);
+void showScoreBoard(AppState* as);
+void selectMode(AppState* as, GameMode* gm);
 
-/* --- Input ---------------------------------------------------------------- */
+/* --- Input
+   ---------------------------------------------------------------- */
 static void handleInput(PlayingState* ps, AppState* as);
 
 /* --- Alien movement / firing --------------------------------------------- */
@@ -189,6 +218,7 @@ static int isAlienGridMt(void);
 static uint16_t getLowestAlienY(void);
 static void moveAliens(uint32_t now);
 static void updateAlienFire(uint32_t now);
+static void moveMainAlien(mainAlien* ma);
 
 /* --- Collision / bullet state -------------------------------------------- */
 static int checkCollision(uint16_t o1X,
@@ -208,8 +238,10 @@ static void repairAliensUnderRect(uint16_t rx,
 static int updateAlienBulletCollision(void);
 static void updatePlayerCollision(void);
 static int checkGameOver(void);
+static void updateMainAlienBulletCollision(void);
 
-/* --- Rendering ------------------------------------------------------------ */
+/* --- Rendering
+   ------------------------------------------------------------ */
 static void renderAliens(void);
 static void renderShip(void);
 static void renderPlayerBullet(void);
@@ -249,17 +281,145 @@ const uint32_t explode_notes[] = {F4, D4, C4, A3, F3, D3, C3, A2, F2, D2, C2};
 const uint32_t explode_times[] = {20, 20, 25, 25, 30, 35, 35, 40, 40, 45, 55};
 const uint32_t explode_note_count = 11;
 
-const uint32_t enter_game_notes_ch1[] = { C3, D3, G3 };
-const uint32_t enter_game_times_ch1[] = { 150, 150, 150 };
+const uint32_t enter_game_notes_ch1[] = {C3, D3, G3};
+const uint32_t enter_game_times_ch1[] = {150, 150, 150};
 const uint32_t enter_game_note_count_ch1 = 3;
 
-const uint32_t enter_game_notes_ch2[] = { C6, D6, G6 };
-const uint32_t enter_game_times_ch2[] = { 150, 150, 150 };
+const uint32_t enter_game_notes_ch2[] = {C6, D6, G6};
+const uint32_t enter_game_times_ch2[] = {150, 150, 150};
 const uint32_t enter_game_note_count_ch2 = 3;
 
-const uint32_t game_loop_notes[] = { REST, G5, A5, AS5_Bb5, A5, F5, A5, G5, REST, G5, A5, AS5_Bb5, C6, AS5_Bb5, A5, G5, REST, G5, A5, AS5_Bb5, A5, F5, A5, G5, D6, REST, C6, REST, AS5_Bb5, A5, AS5_Bb5, C6, F6, REST, REST, G5, D5, D6, D5, C6, D5, AS5_Bb5, D5, A5, D5, AS5_Bb5, D5, A5, D5, G5, D5, A5, D5, AS5_Bb5, D5, C6, D5, AS5_Bb5, D5, A5, D5, F5, D5, A5, D5, G5, D5, G5, D5, D6, D5, C6, D5, AS5_Bb5, D5, A5, D5, AS5_Bb5, D5, A5, D5, AS5_Bb5, D5, A5, D5, AS5_Bb5, D5, C6, D5, AS5_Bb5, D5, A5, D5, F5, D5, A5, D5, G5, D5, G5, D5, D6, D5, C6, D5, AS5_Bb5, D5, A5, D5, AS5_Bb5, D5, A5, D5, G5, D5, A5, D5, AS5_Bb5, D5, C6, D5, AS5_Bb5, D5, A5, D5, F5, D5, A5, D5, G5, D5, AS5_Bb5, D5, D6, D5, C6, D5, AS5_Bb5, D5, A5, D5, AS5_Bb5, D5, A5, D5, G5, D5, A5, D5, AS5_Bb5, D5, C6, D5, AS5_Bb5, D5, A5, D5, F5, D5, A5, D5, G5, D5, C6, C6, F6, D6, REST, REST, REST, C6, AS5_Bb5, C6, F6, D6, C6, AS5_Bb5, C6, F6, D6, REST, REST, REST, C6, D6, DS6_Eb6, F6, D6, REST, DS6_Eb6, REST, C6, F6, D6, REST, REST, REST, C6, AS5_Bb5, C6, F6, D6, C6, AS5_Bb5, C6, F6, D6, REST, REST, REST, C6, D6, DS6_Eb6, F6, D5, FS5_Gb5, F5, A5, A5, G5, A5, G5, A5, G5, AS5_Bb5, A5, G5, F5, A5, G5, D5, A5, G5, D5, A5, G5, D5, AS5_Bb5, C6, A5, AS5_Bb5, G5, D5, D6, D5, C6, D5, AS5_Bb5, D5, A5, D5, AS5_Bb5, D5, A5, D5, G5, D5, A5, D5, AS5_Bb5, D5, C6, D5, AS5_Bb5, D5, A5, D5, F5, D5, A5, D5, G5, D5, G5, D5, D6, D5, C6, D5, AS5_Bb5, D5, A5, D5, AS5_Bb5, D5, A5, D5, AS5_Bb5, D5, A5, D5, AS5_Bb5, D5, C6, D5, AS5_Bb5, D5, A5, D5, F5, D5, A5, D5, G5, D5, G5, D5, D6, D5, C6, D5, AS5_Bb5, D5, A5, D5, AS5_Bb5, D5, A5, D5, G5, D5, A5, D5, AS5_Bb5, D5, C6, D5, AS5_Bb5, D5, A5, D5, F5, D5, A5, D5, G5, D5, AS5_Bb5, D5, D6, D5, C6, D5, AS5_Bb5, D5, A5, D5, AS5_Bb5, D5, A5, D5, G5, D5, A5, D5, AS5_Bb5, D5, C6, D5, AS5_Bb5, D5, A5, D5, F5, D5, A5, D5, G5, D5, C6, C6, F6, D6, REST, REST, REST, C5, REST, A4, AS4_Bb4, C5, D6, G4, AS4_Bb4, G4, C5, G4, D6, G4, C6, F4, A4, F4, F5, F4, D6, DS4_Eb4, D6, REST, E4, F4, GS4_Ab4, REST, AS4_Bb4, REST, DS5_Eb5, GS4_Ab4, B4, GS4_Ab4, CS5_Db5, GS4_Ab4, DS5_Eb5, GS4_Ab4, CS5_Db5, FS4_Gb4, AS4_Bb4, FS4_Gb4, FS5_Gb5, FS4_Gb4, DS5_Eb5, E5, D5, REST, CS5_Db5, REST, AS4_Bb4, B4, CS5_Db5, DS5_Eb5, GS4_Ab4, B4, GS4_Ab4, CS5_Db5, GS4_Ab4, DS5_Eb5, GS4_Ab4, CS5_Db5, FS4_Gb4, AS4_Bb4, FS4_Gb4, FS5_Gb5, FS4_Gb4, DS5_Eb5, E5, DS5_Eb5, REST, DS5_Eb5, E5, FS5_Gb5, CS5_Db5, E5, CS4_Db4, DS5_Eb5, E5, G5, AS5_Bb5, GS5_Ab5, DS5_Eb5, DS6_Eb6, DS5_Eb5, CS6_Db6, DS5_Eb5, B5, DS5_Eb5, AS5_Bb5, DS5_Eb5, B5, DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5, AS5_Bb5, DS5_Eb5, B5, DS5_Eb5, CS6_Db6, DS5_Eb5, B5, DS5_Eb5, AS5_Bb5, DS5_Eb5, FS5_Gb5, DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5, GS5_Ab5, DS5_Eb5, DS6_Eb6, DS5_Eb5, CS6_Db6, DS5_Eb5, B5, DS5_Eb5, AS5_Bb5, DS5_Eb5, B5, DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5, AS5_Bb5, DS5_Eb5, B5, DS5_Eb5, CS6_Db6, DS5_Eb5, B5, DS5_Eb5, AS5_Bb5, DS5_Eb5, FS5_Gb5, DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5, GS5_Ab5, DS5_Eb5, DS6_Eb6, DS5_Eb5, CS6_Db6, DS5_Eb5, B5, DS5_Eb5, AS5_Bb5, DS5_Eb5, B5, DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5, AS5_Bb5, DS5_Eb5, B5, DS5_Eb5, CS6_Db6, DS5_Eb5, B5, DS5_Eb5, AS5_Bb5, DS5_Eb5, FS5_Gb5, DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5, GS5_Ab5, DS5_Eb5, DS6_Eb6, DS5_Eb5, CS6_Db6, DS5_Eb5, B5, DS5_Eb5, AS5_Bb5, DS5_Eb5, B5, DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5, AS5_Bb5, DS5_Eb5, B5, DS5_Eb5, CS6_Db6, DS5_Eb5, B5, DS5_Eb5, AS5_Bb5, DS5_Eb5, FS5_Gb5, DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5, CS6_Db6, FS6_Gb6, DS6_Eb6, REST, REST, REST, CS6_Db6, B5, CS6_Db6, FS6_Gb6, DS6_Eb6, CS6_Db6, B5, CS6_Db6, FS6_Gb6, DS6_Eb6, REST, REST, REST, CS6_Db6, B5, E6, F6, DS6_Eb6, REST, E6, REST, REST, CS6_Db6, FS6_Gb6, DS6_Eb6, REST, REST, REST, CS6_Db6, B5, CS6_Db6, FS6_Gb6, DS6_Eb6, CS6_Db6, B5, CS6_Db6, FS6_Gb6, DS6_Eb6, REST, REST, REST, CS5_Db5, DS5_Eb5, E5, F5, DS5_Eb5, G5, GS5_Ab5, AS5_Bb5, AS5_Bb5, GS5_Ab5, AS5_Bb5, GS5_Ab5, AS5_Bb5, GS5_Ab5, B6, AS5_Bb5, GS5_Ab5, FS5_Gb5, AS5_Bb5, GS6_Ab6, DS5_Eb5, AS5_Bb5, GS6_Ab6, DS5_Eb5, AS5_Bb5, GS6_Ab6, DS5_Eb5, B5, CS6_Db6, AS5_Bb5, B5, GS5_Ab5, REST, REST };
+const uint32_t game_loop_notes[] = {
+    REST,    G5,      A5,      AS5_Bb5, A5,      F5,      A5,      G5,
+    REST,    G5,      A5,      AS5_Bb5, C6,      AS5_Bb5, A5,      G5,
+    REST,    G5,      A5,      AS5_Bb5, A5,      F5,      A5,      G5,
+    D6,      REST,    C6,      REST,    AS5_Bb5, A5,      AS5_Bb5, C6,
+    F6,      REST,    REST,    G5,      D5,      D6,      D5,      C6,
+    D5,      AS5_Bb5, D5,      A5,      D5,      AS5_Bb5, D5,      A5,
+    D5,      G5,      D5,      A5,      D5,      AS5_Bb5, D5,      C6,
+    D5,      AS5_Bb5, D5,      A5,      D5,      F5,      D5,      A5,
+    D5,      G5,      D5,      G5,      D5,      D6,      D5,      C6,
+    D5,      AS5_Bb5, D5,      A5,      D5,      AS5_Bb5, D5,      A5,
+    D5,      AS5_Bb5, D5,      A5,      D5,      AS5_Bb5, D5,      C6,
+    D5,      AS5_Bb5, D5,      A5,      D5,      F5,      D5,      A5,
+    D5,      G5,      D5,      G5,      D5,      D6,      D5,      C6,
+    D5,      AS5_Bb5, D5,      A5,      D5,      AS5_Bb5, D5,      A5,
+    D5,      G5,      D5,      A5,      D5,      AS5_Bb5, D5,      C6,
+    D5,      AS5_Bb5, D5,      A5,      D5,      F5,      D5,      A5,
+    D5,      G5,      D5,      AS5_Bb5, D5,      D6,      D5,      C6,
+    D5,      AS5_Bb5, D5,      A5,      D5,      AS5_Bb5, D5,      A5,
+    D5,      G5,      D5,      A5,      D5,      AS5_Bb5, D5,      C6,
+    D5,      AS5_Bb5, D5,      A5,      D5,      F5,      D5,      A5,
+    D5,      G5,      D5,      C6,      C6,      F6,      D6,      REST,
+    REST,    REST,    C6,      AS5_Bb5, C6,      F6,      D6,      C6,
+    AS5_Bb5, C6,      F6,      D6,      REST,    REST,    REST,    C6,
+    D6,      DS6_Eb6, F6,      D6,      REST,    DS6_Eb6, REST,    C6,
+    F6,      D6,      REST,    REST,    REST,    C6,      AS5_Bb5, C6,
+    F6,      D6,      C6,      AS5_Bb5, C6,      F6,      D6,      REST,
+    REST,    REST,    C6,      D6,      DS6_Eb6, F6,      D5,      FS5_Gb5,
+    F5,      A5,      A5,      G5,      A5,      G5,      A5,      G5,
+    AS5_Bb5, A5,      G5,      F5,      A5,      G5,      D5,      A5,
+    G5,      D5,      A5,      G5,      D5,      AS5_Bb5, C6,      A5,
+    AS5_Bb5, G5,      D5,      D6,      D5,      C6,      D5,      AS5_Bb5,
+    D5,      A5,      D5,      AS5_Bb5, D5,      A5,      D5,      G5,
+    D5,      A5,      D5,      AS5_Bb5, D5,      C6,      D5,      AS5_Bb5,
+    D5,      A5,      D5,      F5,      D5,      A5,      D5,      G5,
+    D5,      G5,      D5,      D6,      D5,      C6,      D5,      AS5_Bb5,
+    D5,      A5,      D5,      AS5_Bb5, D5,      A5,      D5,      AS5_Bb5,
+    D5,      A5,      D5,      AS5_Bb5, D5,      C6,      D5,      AS5_Bb5,
+    D5,      A5,      D5,      F5,      D5,      A5,      D5,      G5,
+    D5,      G5,      D5,      D6,      D5,      C6,      D5,      AS5_Bb5,
+    D5,      A5,      D5,      AS5_Bb5, D5,      A5,      D5,      G5,
+    D5,      A5,      D5,      AS5_Bb5, D5,      C6,      D5,      AS5_Bb5,
+    D5,      A5,      D5,      F5,      D5,      A5,      D5,      G5,
+    D5,      AS5_Bb5, D5,      D6,      D5,      C6,      D5,      AS5_Bb5,
+    D5,      A5,      D5,      AS5_Bb5, D5,      A5,      D5,      G5,
+    D5,      A5,      D5,      AS5_Bb5, D5,      C6,      D5,      AS5_Bb5,
+    D5,      A5,      D5,      F5,      D5,      A5,      D5,      G5,
+    D5,      C6,      C6,      F6,      D6,      REST,    REST,    REST,
+    C5,      REST,    A4,      AS4_Bb4, C5,      D6,      G4,      AS4_Bb4,
+    G4,      C5,      G4,      D6,      G4,      C6,      F4,      A4,
+    F4,      F5,      F4,      D6,      DS4_Eb4, D6,      REST,    E4,
+    F4,      GS4_Ab4, REST,    AS4_Bb4, REST,    DS5_Eb5, GS4_Ab4, B4,
+    GS4_Ab4, CS5_Db5, GS4_Ab4, DS5_Eb5, GS4_Ab4, CS5_Db5, FS4_Gb4, AS4_Bb4,
+    FS4_Gb4, FS5_Gb5, FS4_Gb4, DS5_Eb5, E5,      D5,      REST,    CS5_Db5,
+    REST,    AS4_Bb4, B4,      CS5_Db5, DS5_Eb5, GS4_Ab4, B4,      GS4_Ab4,
+    CS5_Db5, GS4_Ab4, DS5_Eb5, GS4_Ab4, CS5_Db5, FS4_Gb4, AS4_Bb4, FS4_Gb4,
+    FS5_Gb5, FS4_Gb4, DS5_Eb5, E5,      DS5_Eb5, REST,    DS5_Eb5, E5,
+    FS5_Gb5, CS5_Db5, E5,      CS4_Db4, DS5_Eb5, E5,      G5,      AS5_Bb5,
+    GS5_Ab5, DS5_Eb5, DS6_Eb6, DS5_Eb5, CS6_Db6, DS5_Eb5, B5,      DS5_Eb5,
+    AS5_Bb5, DS5_Eb5, B5,      DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5,
+    AS5_Bb5, DS5_Eb5, B5,      DS5_Eb5, CS6_Db6, DS5_Eb5, B5,      DS5_Eb5,
+    AS5_Bb5, DS5_Eb5, FS5_Gb5, DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5,
+    GS5_Ab5, DS5_Eb5, DS6_Eb6, DS5_Eb5, CS6_Db6, DS5_Eb5, B5,      DS5_Eb5,
+    AS5_Bb5, DS5_Eb5, B5,      DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5,
+    AS5_Bb5, DS5_Eb5, B5,      DS5_Eb5, CS6_Db6, DS5_Eb5, B5,      DS5_Eb5,
+    AS5_Bb5, DS5_Eb5, FS5_Gb5, DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5,
+    GS5_Ab5, DS5_Eb5, DS6_Eb6, DS5_Eb5, CS6_Db6, DS5_Eb5, B5,      DS5_Eb5,
+    AS5_Bb5, DS5_Eb5, B5,      DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5,
+    AS5_Bb5, DS5_Eb5, B5,      DS5_Eb5, CS6_Db6, DS5_Eb5, B5,      DS5_Eb5,
+    AS5_Bb5, DS5_Eb5, FS5_Gb5, DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5,
+    GS5_Ab5, DS5_Eb5, DS6_Eb6, DS5_Eb5, CS6_Db6, DS5_Eb5, B5,      DS5_Eb5,
+    AS5_Bb5, DS5_Eb5, B5,      DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5,
+    AS5_Bb5, DS5_Eb5, B5,      DS5_Eb5, CS6_Db6, DS5_Eb5, B5,      DS5_Eb5,
+    AS5_Bb5, DS5_Eb5, FS5_Gb5, DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5,
+    CS6_Db6, FS6_Gb6, DS6_Eb6, REST,    REST,    REST,    CS6_Db6, B5,
+    CS6_Db6, FS6_Gb6, DS6_Eb6, CS6_Db6, B5,      CS6_Db6, FS6_Gb6, DS6_Eb6,
+    REST,    REST,    REST,    CS6_Db6, B5,      E6,      F6,      DS6_Eb6,
+    REST,    E6,      REST,    REST,    CS6_Db6, FS6_Gb6, DS6_Eb6, REST,
+    REST,    REST,    CS6_Db6, B5,      CS6_Db6, FS6_Gb6, DS6_Eb6, CS6_Db6,
+    B5,      CS6_Db6, FS6_Gb6, DS6_Eb6, REST,    REST,    REST,    CS5_Db5,
+    DS5_Eb5, E5,      F5,      DS5_Eb5, G5,      GS5_Ab5, AS5_Bb5, AS5_Bb5,
+    GS5_Ab5, AS5_Bb5, GS5_Ab5, AS5_Bb5, GS5_Ab5, B6,      AS5_Bb5, GS5_Ab5,
+    FS5_Gb5, AS5_Bb5, GS6_Ab6, DS5_Eb5, AS5_Bb5, GS6_Ab6, DS5_Eb5, AS5_Bb5,
+    GS6_Ab6, DS5_Eb5, B5,      CS6_Db6, AS5_Bb5, B5,      GS5_Ab5, REST,
+    REST};
 
-const uint32_t game_loop_times[] = { 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 208, 208, 417, 417, 417, 208, 208, 208, 208, 417, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 208, 104, 208, 417, 104, 104, 312, 312, 625, 208, 208, 208, 104, 208, 104, 208, 417, 208, 208, 312, 312, 312, 104, 208, 208, 208, 104, 208, 104, 208, 417, 208, 208, 312, 312, 625, 208, 208, 208, 104, 208, 104, 208, 417, 208, 208, 312, 312, 208, 208, 208, 208, 312, 625, 312, 625, 312, 625, 208, 208, 208, 208, 312, 312, 208, 312, 312, 208, 312, 312, 208, 417, 417, 417, 417, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 208, 52, 52, 52, 52, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 417, 417, 208, 208, 156, 156, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 208, 104, 104, 208, 208, 208, 208, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 417, 417, 208, 208, 156, 156, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 417, 208, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 208, 104, 208, 104, 208, 417, 208, 208, 312, 312, 625, 208, 208, 208, 104, 208, 104, 208, 417, 208, 208, 312, 312, 312, 104, 104, 208, 104, 208, 104, 208, 417, 208, 208, 312, 312, 625, 208, 208, 208, 104, 208, 104, 208, 417, 208, 208, 312, 312, 208, 208, 208, 208, 312, 312, 312, 312, 208, 208, 104 };
+const uint32_t game_loop_times[] = {
+    417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417,
+    417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 208, 208, 417, 417, 417,
+    208, 208, 208, 208, 417, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
+    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
+    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
+    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
+    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
+    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
+    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
+    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
+    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
+    208, 104, 208, 417, 104, 104, 312, 312, 625, 208, 208, 208, 104, 208, 104,
+    208, 417, 208, 208, 312, 312, 312, 104, 208, 208, 208, 104, 208, 104, 208,
+    417, 208, 208, 312, 312, 625, 208, 208, 208, 104, 208, 104, 208, 417, 208,
+    208, 312, 312, 208, 208, 208, 208, 312, 625, 312, 625, 312, 625, 208, 208,
+    208, 208, 312, 312, 208, 312, 312, 208, 312, 312, 208, 417, 417, 417, 417,
+    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
+    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
+    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
+    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
+    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
+    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
+    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
+    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
+    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
+    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
+    104, 104, 208, 52,  52,  52,  52,  104, 104, 104, 104, 104, 104, 104, 104,
+    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
+    417, 417, 208, 208, 156, 156, 104, 104, 104, 104, 104, 104, 104, 104, 104,
+    104, 104, 104, 104, 104, 104, 104, 104, 104, 208, 104, 104, 208, 208, 208,
+    208, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
+    104, 104, 104, 417, 417, 208, 208, 156, 156, 104, 104, 104, 104, 104, 104,
+    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 417, 208, 104,
+    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
+    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
+    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
+    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
+    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
+    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
+    104, 104, 104, 208, 104, 208, 104, 208, 417, 208, 208, 312, 312, 625, 208,
+    208, 208, 104, 208, 104, 208, 417, 208, 208, 312, 312, 312, 104, 104, 208,
+    104, 208, 104, 208, 417, 208, 208, 312, 312, 625, 208, 208, 208, 104, 208,
+    104, 208, 417, 208, 208, 312, 312, 208, 208, 208, 208, 312, 312, 312, 312,
+    208, 208, 104};
 
 const uint32_t game_loop_note_count = 677;
 
@@ -272,6 +432,7 @@ static uint32_t lastUpdate = 0;
 static const uint32_t FRAME_DELAY = 16;
 
 AppState currentAppState = MAINMENU;
+GameMode currentGameMode = EASY;
 
 static GameState gs;
 static uint32_t randState;
@@ -399,13 +560,19 @@ int main(void) {
         help(&currentAppState);
         break;
       case PLAYING:
-        start_sound_effect_ch1(enter_game_notes_ch1, enter_game_times_ch1, enter_game_note_count_ch1, 0);
-        start_sound_effect_ch2(enter_game_notes_ch2, enter_game_times_ch2, enter_game_note_count_ch2, 0);
+        start_sound_effect_ch1(enter_game_notes_ch1, enter_game_times_ch1,
+                               enter_game_note_count_ch1, 0);
+        start_sound_effect_ch2(enter_game_notes_ch2, enter_game_times_ch2,
+                               enter_game_note_count_ch2, 0);
         delay(500);
         playing(&currentAppState);
         break;
       case RECORD:
         showScoreBoard(&currentAppState);
+        break;
+      case MODE:
+        delay(500);
+        selectMode(&currentAppState, &currentGameMode);
         break;
       default:
         break;
@@ -436,11 +603,9 @@ void start_sound_effect_ch1(const uint32_t notes[],
   channel1_note_index = 0;
   channel1_note_timer = channel1_times[0];
 
-  if (channel1_notes[0] == REST)
-  {
-  stopSound();
-  } else 
-  {
+  if (channel1_notes[0] == REST) {
+    stopSound();
+  } else {
     playNote(channel1_notes[0]);
   }
   __enable_irq();
@@ -461,11 +626,9 @@ void start_sound_effect_ch2(const uint32_t notes[],
   channel2_note_index = 0;
   channel2_note_timer = channel2_times[0];
 
-  if (channel2_notes[0] == REST) 
-  {
-  stopSound2();
-  } else 
-  {
+  if (channel2_notes[0] == REST) {
+    stopSound2();
+  } else {
     playNote2(channel2_notes[0]);
   }
   __enable_irq();
@@ -494,14 +657,11 @@ void SysTick_Handler(void) {
         }
       }
 
-      if (channel1_notes != 0) 
-      {
+      if (channel1_notes != 0) {
         channel1_note_timer = channel1_times[channel1_note_index];
-        if (channel1_notes[channel1_note_index] == REST) 
-        {
+        if (channel1_notes[channel1_note_index] == REST) {
           stopSound();
-        } else 
-        {
+        } else {
           playNote(channel1_notes[channel1_note_index]);
         }
       }
@@ -530,15 +690,11 @@ void SysTick_Handler(void) {
         }
       }
 
-      if (channel2_notes != 0) 
-      {
+      if (channel2_notes != 0) {
         channel2_note_timer = channel2_times[channel2_note_index];
-        if (channel2_notes[channel2_note_index] == REST) 
-        {
+        if (channel2_notes[channel2_note_index] == REST) {
           stopSound2();
-        } 
-        else 
-        {
+        } else {
           playNote2(channel2_notes[channel2_note_index]);
         }
       }
@@ -658,6 +814,12 @@ static uint32_t randomFireDelay(void) {
   uint32_t range = ALIEN_FIRE_MAX_MS - ALIEN_FIRE_MIN_MS;
   return ALIEN_FIRE_MIN_MS + (xorshift32() % range);
 }
+
+static uint32_t randomMainAlienDelay(void) {
+  uint32_t range = MAIN_ALIEN_MAX_DELAY - MAIN_ALIEN_MIN_DELAY;
+  return MAIN_ALIEN_MIN_DELAY + (xorshift32() % range);
+}
+
 uint8_t get_random_bit(uint32_t* state) {
   (void)state;
   return xorshift32() & 1u;
@@ -673,10 +835,17 @@ int isInside(uint16_t x1,
 
 /* --- Background / screen helpers ----------------------------------------- */
 void loadBackground() {
-  printTextBold("Space", 10, 10, 1, 0);
-  printTextBold("Invader", 40, 20, 1, 0);
+  printTextBold("Space", 10, 10, 65535, 0);
+  printTextBold("Invader", 40, 20, 65535, 0);
 
-  // putImage(0, 0, 128, 50, top_background, 1, 0);
+  putImage(20, 20, 11, 8, greenAlien[0], 1, 0);
+  putImage(80, 10, 11, 8, greenAlien[1], 1, 0);
+  for (int i = 0; i < 7; i++) {
+    const uint16_t* spr = (i % 3 == 0)   ? redAlien[i % 2]
+                          : (i % 3 == 1) ? greenAlien[i % 2]
+                                         : blueAlienBoth[i % 2];
+    putImage(i * 18, 145, 11, 8, spr, i % 2, 0);
+  }
   // putImage(110, 0, 128,50, bottom_background, 1, 0);
 }
 void clearDisplay() {
@@ -740,9 +909,35 @@ static void initAlienGrid() {
     ag->nextFireTime[i] = milliseconds + randomFireDelay();
   }
 }
+
+static void initMainAlien(mainAlien* ma) {
+  ma->coords.x = 0;
+  ma->coords.y = MAIN_ALIEN_Y;
+  ma->coords.oldX = 0;
+  ma->coords.oldY = MAIN_ALIEN_Y;
+
+  ma->speed = 2;
+  ma->dir = 1;
+  ma->active = 0;
+
+  ma->nextSpawnTime = milliseconds + randomMainAlienDelay();
+  ma->lastMoveTime = 0;
+}
+
 static void initGameState(void) {
   gs.highScore = records[0].score;
   randState = milliseconds | 1; /* Ship */
+
+  if (currentGameMode == EASY) {
+    gs.alienSpeed = ALIEN_MOVE_MS_EASY;
+    gs.score_inc = SCORE_INC_EASY;
+  } else if (currentGameMode == MEDIUM) {
+    gs.alienSpeed = ALIEN_MOVE_MS_MED;
+    gs.score_inc = SCORE_INC_MED;
+  } else {
+    gs.alienSpeed = ALIEN_MOVE_MS_HARD;
+    gs.score_inc - SCORE_INC_HARD;
+  }
 
   gs.ship.coords.x = gs.ship.coords.oldX = 58;
   gs.ship.coords.y = gs.ship.coords.oldY = 130;
@@ -758,6 +953,8 @@ static void initGameState(void) {
 
   /* Alien grid */
   initAlienGrid();
+  /* Main alien*/
+  initMainAlien(&gs.mysteryAlien);
 }
 static void resetGame(void) {
   /* Blank the whole play area above the HUD line */
@@ -785,6 +982,7 @@ void mainMenu(AppState* as) {
   uint16_t startButton = normal;
   uint16_t helpButton = normal;
   uint16_t scoreButton = normal;
+  uint16_t modeButton = normal;
 
   int done = 0;
 
@@ -798,24 +996,35 @@ void mainMenu(AppState* as) {
       startButton = highlighted;
       helpButton = normal;
       scoreButton = normal;
+      modeButton = normal;
     }
     if (selectedOption == 1) {
       helpButton = highlighted;
       scoreButton = normal;
       startButton = normal;
+      modeButton = normal;
     }
     if (selectedOption == 2) {
       scoreButton = highlighted;
       startButton = normal;
       helpButton = normal;
+      modeButton = normal;
+    }
+
+    if (selectedOption == 3) {
+      modeButton = highlighted;
+      startButton = normal;
+      helpButton = normal;
+      scoreButton = normal;
     }
 
     printText("Start Game", 20, 60, startButton, 0);
     printText("Help", 20, 80, helpButton, 0);
     printText("High Scores", 20, 100, scoreButton, 0);
+    printText("Select Mode", 20, 120, modeButton, 0);
 
     if (((GPIOA->IDR & (1 << 11)) == 0) || c == 's' || c == 'S') {
-      if (selectedOption < 2) {
+      if (selectedOption < 3) {
         selectedOption++;
         delay(100);
       }
@@ -840,6 +1049,10 @@ void mainMenu(AppState* as) {
       }
       if (selectedOption == 2) {
         *as = RECORD;
+        done = 1;
+      }
+      if (selectedOption == 3) {
+        *as = MODE;
         done = 1;
       }
     }
@@ -869,6 +1082,82 @@ void help(AppState* as) {
         c == '\n') {
       *as = MAINMENU;
       done = 1;
+    }
+  }
+}
+
+void selectMode(AppState* as, GameMode* gm) {
+  clearDisplay();
+
+  loadBackground();
+  printText("Game Level:", 20, 40, 65535, 0);
+
+  int selectedOption = *gm;
+
+  uint16_t normal = RGBToWord(0xff, 0xff, 0);
+  uint16_t highlighted = RGBToWord(211, 211, 211);
+  uint16_t startButton = normal;
+  uint16_t helpButton = normal;
+  uint16_t scoreButton = normal;
+  uint16_t modeButton = normal;
+
+  while (1) {
+    char c = 0;
+    if (serialCharAvailable()) {
+      c = serialGetCharNonBlocking();
+    }
+
+    if (selectedOption == 0) {
+      startButton = highlighted;
+      helpButton = normal;
+      scoreButton = normal;
+    }
+    if (selectedOption == 1) {
+      helpButton = highlighted;
+      scoreButton = normal;
+      startButton = normal;
+    }
+    if (selectedOption == 2) {
+      scoreButton = highlighted;
+      startButton = normal;
+      helpButton = normal;
+    }
+
+    printText("Easy", 20, 60, startButton, 0);
+    printText("Medium", 20, 80, helpButton, 0);
+    printText("Hard", 20, 100, scoreButton, 0);
+
+    if (((GPIOA->IDR & (1 << 11)) == 0) || c == 's' || c == 'S') {
+      if (selectedOption < 2) {
+        selectedOption++;
+        delay(200);
+      }
+    }
+
+    if (((GPIOA->IDR & (1 << 8)) == 0) || c == 'w' || c == 'W') {
+      if (selectedOption > 0) {
+        selectedOption--;
+        delay(200);
+      }
+    }
+
+    if (((GPIOB->IDR & (1 << 4)) == 0) || c == ' ' || c == '\r' || c == '\n' ||
+        c == 'd' || c == 'D') {
+      if (selectedOption == 0) {
+        *gm = EASY;
+        *as = MAINMENU;
+        return;
+      }
+      if (selectedOption == 1) {
+        *gm = MEDIUM;
+        *as = MAINMENU;
+        return;
+      }
+      if (selectedOption == 2) {
+        *gm = HARD;
+        *as = MAINMENU;
+        return;
+      }
     }
   }
 }
@@ -1069,7 +1358,8 @@ void getPause(PlayingState* ps, AppState* as) {
     printText("> Resume", 10, 82, RGBToWord(255, 255, 255), 0);
     printText("  Main Menu", 10, 94, RGBToWord(255, 255, 255), 0);
 
-    /* Wait for button release first (debounce the PA11 press that got us here)
+    /* Wait for button release first (debounce the PA11 press that got us
+     * here)
      */
     while ((GPIOA->IDR & (1 << 11)) == 0)
       ;
@@ -1113,7 +1403,7 @@ void playing(AppState* as) {
   clearDisplay();
 
   /* Game */
-  gs.lives = 1;  // temp
+  gs.lives = 3;
   gs.score = 0;
 
   initGameState();
@@ -1125,7 +1415,8 @@ void playing(AppState* as) {
   putImage(gs.ship.coords.x, gs.ship.coords.y, SHIP_W, SHIP_H, spaceShip, 1, 0);
   drawLine(0, HUD_LINE_Y, SCREEN_W, HUD_LINE_Y, HUD_LINE_COLOR);
 
-  start_sound_effect_ch2(game_loop_notes, game_loop_times, game_loop_note_count, 1);
+  start_sound_effect_ch2(game_loop_notes, game_loop_times, game_loop_note_count,
+                         1);
 
   PlayingState currentPlayingState = GAMERUNNING;
   /* Game loop */
@@ -1175,8 +1466,10 @@ void playing(AppState* as) {
         return; /* quit was selected */
       continue;
     }
-    moveAliens(now); /* now = time, timer-> alien grid shift */
-    updateAlienFire(now);
+    updateMainAlienBulletCollision();
+    moveMainAlien(&gs.mysteryAlien);
+    moveAliens(now);         /* now = time, timer-> alien grid shift */
+    updateAlienFire(now);    // adds random delay to alien firing
     updatePlayerCollision(); /* bullet    -> alien grid       */
     /*
     TODO :
@@ -1209,7 +1502,8 @@ void playing(AppState* as) {
   }
 }
 
-/* --- Input ---------------------------------------------------------------- */
+/* --- Input ----------------------------------------------------------------
+ */
 
 static void handleInput(PlayingState* ps, AppState* as) {
   char c = 0;
@@ -1240,11 +1534,12 @@ static void handleInput(PlayingState* ps, AppState* as) {
     if (gs.bullet.state == BULLET_READY) {
       gs.bullet.state = BULLET_FIRE;
       start_sound_effect_ch1(shoot_notes, shoot_times, shoot_note_count, 0);
+      delay(50);
     }
   }
 
   /* Pause - PA11 or D*/
-  if ((GPIOA->IDR & (1 << 11)) == 0 || (c == 'd') || (c == 'D')) {
+  if ((GPIOA->IDR & (1 << 11)) == 0 || (c == 'S') || (c == 's')) {
     delay(50);
     *ps = PAUSE;
   }
@@ -1254,6 +1549,8 @@ static void handleInput(PlayingState* ps, AppState* as) {
   if ((GPIOA->IDR & (1 << 9)) == 0) {
     delay(50);
     *ps = PAUSE;
+    stop_sound_effect_ch2();
+    stop_sound_effect_ch1();
     *as = MAINMENU;
   }
 }
@@ -1287,7 +1584,7 @@ static uint16_t getLowestAlienY(void) {
 static void moveAliens(uint32_t now) {
   AlienGrid* ag = &gs.aliens;
 
-  if (now - ag->lastMoveTime < ALIEN_MOVE_MS)
+  if (now - ag->lastMoveTime < gs.alienSpeed)
     return;
 
   ag->lastMoveTime = now;
@@ -1341,6 +1638,58 @@ static void updateAlienFire(uint32_t now) {
       ag->ab[j].state = BULLET_FIRE;
       ag->nextFireTime[j] = now + randomFireDelay();
     }
+  }
+}
+
+static void moveMainAlien(mainAlien* ma) {
+  uint32_t now = milliseconds;
+
+  /* --- Spawn logic --- */
+  if (!ma->active) {
+    if (now >= ma->nextSpawnTime) {
+      ma->active = 1;
+
+      /* Random direction */
+      if (xorshift32() & 1) {
+        ma->dir = 1;
+        ma->coords.x = 0;
+      } else {
+        ma->dir = -1;
+        ma->coords.x = SCREEN_W - ALIEN_W;
+      }
+
+      ma->coords.y = MAIN_ALIEN_Y;
+      ma->coords.oldX = ma->coords.x;
+      ma->coords.oldY = ma->coords.y;
+
+      ma->lastMoveTime = now;
+    }
+    return;
+  }
+
+  /* --- Movement timing --- */
+  if (now - ma->lastMoveTime < MAIN_ALIEN_MOVE_DELAY)
+    return;
+
+  ma->lastMoveTime = now;
+
+  /* --- Erase old position --- */
+  fillRectangle(ma->coords.oldX, ma->coords.oldY, ALIEN_W, ALIEN_H, 0);
+
+  /* --- Move --- */
+  ma->coords.oldX = ma->coords.x;
+  ma->coords.x += ma->speed * ma->dir;
+
+  /* --- Draw --- */
+  putImage(ma->coords.x, ma->coords.y, ALIEN_W, ALIEN_H, greenAlien[0], 1, 0);
+
+  /* --- Check bounds --- */
+  if (ma->coords.x <= 0 || ma->coords.x >= (SCREEN_W - ALIEN_W)) {
+    /* erase before disappearing */
+    fillRectangle(ma->coords.x, ma->coords.y, ALIEN_W, ALIEN_H, 0);
+
+    ma->active = 0;
+    ma->nextSpawnTime = now + randomMainAlienDelay();
   }
 }
 
@@ -1425,6 +1774,25 @@ static int updateAlienBulletCollision(void) {
   }
   return hit;
 }
+
+static void updateMainAlienBulletCollision(void) {
+  mainAlien* ma = &gs.mysteryAlien;
+  Bullet* b = &gs.bullet;
+  if (b->state != BULLET_FIRE)
+    return;
+
+  if (checkCollision(ma->coords.x, ma->coords.y, ALIEN_W, ALIEN_H, b->coords.x,
+                     b->coords.y, BULLET_W, BULLET_H)) {
+    gs.score += 50;
+    putImage(ma->coords.x, ma->coords.y, ALIEN_W, ALIEN_H, explosion, 1, 0);
+    delay(50);
+    fillRectangle(ma->coords.x, ma->coords.y, ALIEN_W, ALIEN_H, 0);
+    start_sound_effect_ch1(explode_notes, explode_times, explode_note_count, 0);
+
+    initMainAlien(&gs.mysteryAlien);
+  }
+}
+
 static void updatePlayerCollision(void) {
   if (gs.bullet.state != BULLET_FIRE)
     return;
@@ -1455,7 +1823,7 @@ static void updatePlayerCollision(void) {
 
         /* Increase the score..... */
 
-        gs.score += SCORE_INC;
+        gs.score += gs.score_inc;
         return; /* one hit per frame */
       }
     }
