@@ -42,6 +42,8 @@
 /* --- Alien grid ----------------------------------------------------------- */
 #define ALIEN_W 11
 #define ALIEN_H 8
+#define MAIN_ALIEN_W 22
+#define MAIN_ALIEN_H 16
 #define ALIEN_ROWS 3
 #define ALIEN_COLS 5
 #define ALIEN_GAP_X 11    /* horizontal gap between aliens          */
@@ -73,7 +75,7 @@
 #define MAIN_ALIEN_Y 10
 #define MAIN_ALIEN_MIN_DELAY 3000
 #define MAIN_ALIEN_MAX_DELAY 6000
-#define MAIN_ALIEN_MOVE_DELAY 70  // movement speed (lower = faster)
+#define MAIN_ALIEN_MOVE_DELAY 30  // movement speed (lower = faster)
 
 /* --- HUD ------------------------------------------------------------------ */
 #define HUD_LINE_Y 144
@@ -112,6 +114,16 @@ typedef struct {
 } ScoreRecord;
 
 /* --- Alien formation ------------------------------------------------------ */
+
+typedef struct {
+  Transform coords;
+  uint16_t speed;
+  int8_t dir;              // 1 = right, -1 = left
+  uint8_t active;          // 0 = hidden, 1 = active
+  uint32_t nextSpawnTime;  // when to appear
+  uint32_t lastMoveTime;   // movement timing
+} MainAlien;
+
 typedef struct {
   int16_t offsetX, offsetY;
   int16_t oldOffsetX, oldOffsetY;
@@ -125,15 +137,6 @@ typedef struct {
   uint32_t nextFireTime[ALIEN_COLS];
 } AlienGrid;
 
-typedef struct {
-  Transform coords;
-  uint16_t speed;
-  int8_t dir;              // 1 = right, -1 = left
-  uint8_t active;          // 0 = hidden, 1 = active
-  uint32_t nextSpawnTime;  // when to appear
-  uint32_t lastMoveTime;   // movement timing
-} mainAlien;
-
 /* --- Whole game state ----------------------------------------------------- */
 typedef struct {
   Ship ship;
@@ -144,7 +147,7 @@ typedef struct {
   int highScore;
   int alienSpeed;
   int score_inc;
-  mainAlien mysteryAlien;
+  MainAlien mysteryAlien;
 } GameState;
 
 /* --- App / gameplay states ------------------------------------------------ */
@@ -218,7 +221,7 @@ static int isAlienGridMt(void);
 static uint16_t getLowestAlienY(void);
 static void moveAliens(uint32_t now);
 static void updateAlienFire(uint32_t now);
-static void moveMainAlien(mainAlien* ma);
+static void moveMainAlien(MainAlien* ma);
 
 /* --- Collision / bullet state -------------------------------------------- */
 static int checkCollision(uint16_t o1X,
@@ -537,6 +540,77 @@ static const uint16_t explosion[88] = {
     0,    0,     0,     7013,  61747, 7013,  32158, 64354, 11313, 0,     0,
     0,    0,     0,     53562, 1073,  21809, 61747, 2105,  0,     0,     0};
 
+// static const uint16_t mainAlienSpr[352] = {
+//     0,     0,     0,     0,     65320, 65320, 0,     0,     0,     0,     0,
+//     0,     0,     0,     0,     0,     65320, 65320, 0,     0,     0,     0,
+//     0,     0,     0,     0,     65320, 65320, 0,     0,     0,     0,     0,
+//     0,     0,     0,     0,     0,     65320, 65320, 0,     0,     0,     0,
+//     65320, 65320, 0,     0,     0,     0,     65320, 65320, 0,     0,     0,
+//     0,     0,     0,     65320, 65320, 0,     0,     0,     0,     65320,
+//     65320, 65320, 65320, 0,     0,     0,     0,     65320, 65320, 0,     0,
+//     0, 0,     0,     0,     65320, 65320, 0,     0,     0,     0,     65320,
+//     65320, 65320, 65320, 0,     0,     65320, 65320, 65320, 65320, 65320,
+//     65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 0,     0,
+//     65320, 65320, 65320, 65320, 0,     0,     65320, 65320, 65320, 65320,
+//     65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 0,
+//     0,     65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 0,     0,
+//     65320, 65320, 65320, 65320, 65320, 65320, 0,     0,     65320, 65320,
+//     65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 0,
+//     0,     65320, 65320, 65320, 65320, 65320, 65320, 0,     0,     65320,
+//     65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320,
+//     65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320,
+//     65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320,
+//     65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320,
+//     65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 0,     0,
+//     65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320,
+//     65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 0,     0, 0, 0,
+//     65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320,
+//     65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 0,     0, 0, 0,
+//     0,     0,     65320, 65320, 0,     0,     0,     0,     0, 0,     0, 0,
+//     0,     0,     65320, 65320, 0,     0,     0,     0, 0,     0,     0, 0,
+//     65320, 65320, 0,     0,     0,     0,     0, 0,     0,     0,     0, 0,
+//     65320, 65320, 0,     0,     0,     0, 0,     0,     65320, 65320, 0, 0,
+//     0,     0,     0,     0,     0, 0,     0,     0,     0,     0,     0, 0,
+//     65320, 65320, 0,     0, 0,     0,     65320, 65320, 0,     0,     0, 0,
+//     0,     0,     0, 0,     0,     0,     0,     0,     0,     0,     65320,
+//     65320, 0,     0,
+// };
+
+static const uint16_t mainAlienSpr[352] = {
+    0,     0,     0,     0,     65320, 65320, 0,     0,     0,     0,     0,
+    0,     0,     0,     0,     0,     65320, 65320, 0,     0,     0,     0,
+    0,     0,     0,     0,     65320, 65320, 0,     0,     0,     0,     0,
+    0,     0,     0,     0,     0,     65320, 65320, 0,     0,     0,     0,
+    65320, 0,     0,     0,     0,     0,     65320, 65320, 0,     65320, 0,
+    0,     0,     0,     65320, 65320, 0,     0,     0,     0,     0,     65320,
+    65320, 65320, 0,     0,     0,     0,     65320, 65320, 0,     0,     0,
+    65320, 0,     0,     65320, 65320, 0,     0,     0,     0,     65320, 65320,
+    65320, 65320, 0,     0,     65320, 65320, 65320, 65320, 65320, 65320, 65320,
+    65320, 65320, 65320, 65320, 65320, 65320, 65320, 0,     0,     65320, 65320,
+    65320, 65320, 0,     0,     65320, 65320, 65320, 65320, 65320, 65320, 65320,
+    65320, 65320, 65320, 65320, 65320, 65320, 65320, 0,     0,     65320, 65320,
+    65320, 65320, 65320, 65320, 65320, 65321, 27663, 27663, 65320, 65321, 65320,
+    65320, 65320, 65320, 27663, 27663, 65320, 65320, 65320, 65320, 65320, 65320,
+    65320, 65320, 65320, 65320, 65320, 65321, 27663, 27663, 65320, 65320, 65320,
+    65320, 65320, 65320, 27663, 27663, 65320, 65320, 65320, 65320, 65320, 65320,
+    65320, 65320, 65320, 65320, 27663, 27663, 57600, 57600, 27663, 27663, 65320,
+    65320, 27663, 27663, 57600, 57600, 27663, 27663, 65320, 65320, 65320, 65320,
+    65320, 65320, 65320, 65320, 27663, 27663, 57600, 57600, 27663, 27663, 65320,
+    65320, 27663, 27663, 57600, 57600, 27663, 27663, 65320, 65320, 65320, 65320,
+    65320, 65320, 65320, 65320, 65320, 65320, 27663, 27663, 65321, 65320, 27663,
+    27663, 65320, 65320, 27663, 27663, 65320, 65320, 65320, 65320, 65320, 65320,
+    0,     65320, 65320, 65320, 65320, 65320, 27663, 27663, 65320, 65320, 27663,
+    27663, 65320, 65320, 27663, 27663, 65320, 65320, 65320, 65320, 65320, 0,
+    0,     65320, 65320, 65320, 0,     0,     65320, 65320, 65320, 65320, 65320,
+    65320, 65320, 65320, 65320, 65320, 0,     0,     65320, 65320, 65320, 0,
+    0,     65320, 65320, 65320, 16151, 0,     65320, 65320, 17144, 17144, 65320,
+    65320, 17144, 17144, 65320, 65320, 0,     0,     65320, 65320, 65320, 0,
+    0,     0,     65320, 65320, 0,     0,     0,     0,     17144, 17144, 0,
+    0,     17144, 17144, 0,     0,     0,     0,     65320, 65320, 0,     0,
+    0,     0,     65320, 65320, 0,     0,     0,     0,     0,     0,     0,
+    0,     0,     0,     0,     0,     0,     0,     65320, 65320, 0,     0,
+};
+
 /*
  * 10. MAIN
  */
@@ -775,18 +849,32 @@ static void setupIO(void) {
   enablePullUp(GPIOA, 9);
 }
 
+// static void lightLivesIndicator(int lives) {
+//   // Clear LEDs
+//   GPIOA->ODR &= ~((1 << 2) | (1 << 1));
+//   GPIOB->ODR &= ~(1 << 3);
+
+//   // temp
+//   // GPIOC->ODR |= (1 << 3);
+
+//   // Set LEDs based on lives
+//   GPIOA->ODR |= (lives >= 1) ? (1 << 1) : 0;
+//   GPIOB->ODR |= (lives >= 2) ? (1 << 3) : 0;
+//   GPIOA->ODR |= (lives == 3) ? (1 << 2) : 0;
+// }
+
 static void lightLivesIndicator(int lives) {
-  // Clear LEDs
-  GPIOA->ODR &= ~((1 << 2) | (1 << 1));
-  GPIOB->ODR &= ~(1 << 3);
+  // Clear all LEDs
+  GPIOA->BSRR = (1 << (1 + 16)) | (1 << (2 + 16));
+  GPIOB->BSRR = (1 << (3 + 16));
 
-  // temp
-  // GPIOC->ODR |= (1 << 3);
-
-  // Set LEDs based on lives
-  GPIOA->ODR |= (lives >= 1) ? (1 << 1) : 0;
-  GPIOB->ODR |= (lives >= 2) ? (1 << 3) : 0;
-  GPIOA->ODR |= (lives == 3) ? (1 << 2) : 0;
+  // Set LEDs
+  if (lives >= 1)
+    GPIOA->BSRR = (1 << 1);
+  if (lives >= 2)
+    GPIOB->BSRR = (1 << 3);
+  if (lives >= 3)
+    GPIOA->BSRR = (1 << 2);
 }
 /* --- Utility / timing / random -------------------------------------------
  */
@@ -910,7 +998,7 @@ static void initAlienGrid() {
   }
 }
 
-static void initMainAlien(mainAlien* ma) {
+static void initMainAlien(MainAlien* ma) {
   ma->coords.x = 0;
   ma->coords.y = MAIN_ALIEN_Y;
   ma->coords.oldX = 0;
@@ -1024,6 +1112,10 @@ void mainMenu(AppState* as) {
     printText("Select Mode", 20, 120, modeButton, 0);
 
     if (((GPIOA->IDR & (1 << 11)) == 0) || c == 's' || c == 'S') {
+      while ((GPIOA->IDR & (1 << 11)) == 0)
+        ; /* wait for release */
+      delay(50);
+
       if (selectedOption < 3) {
         selectedOption++;
         delay(100);
@@ -1031,6 +1123,9 @@ void mainMenu(AppState* as) {
     }
 
     if (((GPIOA->IDR & (1 << 8)) == 0) || c == 'w' || c == 'W') {
+      while ((GPIOA->IDR & (1 << 11)) == 0)
+        ; /* wait for release */
+      delay(50);
       if (selectedOption > 0) {
         selectedOption--;
         delay(100);
@@ -1158,6 +1253,8 @@ void selectMode(AppState* as, GameMode* gm) {
         *as = MAINMENU;
         return;
       }
+
+      delay(200);
     }
   }
 }
@@ -1534,7 +1631,7 @@ static void handleInput(PlayingState* ps, AppState* as) {
     if (gs.bullet.state == BULLET_READY) {
       gs.bullet.state = BULLET_FIRE;
       start_sound_effect_ch1(shoot_notes, shoot_times, shoot_note_count, 0);
-      delay(50);
+      // delay(50);
     }
   }
 
@@ -1641,7 +1738,7 @@ static void updateAlienFire(uint32_t now) {
   }
 }
 
-static void moveMainAlien(mainAlien* ma) {
+static void moveMainAlien(MainAlien* ma) {
   uint32_t now = milliseconds;
 
   /* --- Spawn logic --- */
@@ -1655,7 +1752,7 @@ static void moveMainAlien(mainAlien* ma) {
         ma->coords.x = 0;
       } else {
         ma->dir = -1;
-        ma->coords.x = SCREEN_W - ALIEN_W;
+        ma->coords.x = SCREEN_W - MAIN_ALIEN_W;
       }
 
       ma->coords.y = MAIN_ALIEN_Y;
@@ -1674,19 +1771,21 @@ static void moveMainAlien(mainAlien* ma) {
   ma->lastMoveTime = now;
 
   /* --- Erase old position --- */
-  fillRectangle(ma->coords.oldX, ma->coords.oldY, ALIEN_W, ALIEN_H, 0);
+  fillRectangle(ma->coords.oldX, ma->coords.oldY, MAIN_ALIEN_W, MAIN_ALIEN_H,
+                0);
 
   /* --- Move --- */
   ma->coords.oldX = ma->coords.x;
   ma->coords.x += ma->speed * ma->dir;
 
   /* --- Draw --- */
-  putImage(ma->coords.x, ma->coords.y, ALIEN_W, ALIEN_H, greenAlien[0], 1, 0);
+  putImage(ma->coords.x, ma->coords.y, MAIN_ALIEN_W, MAIN_ALIEN_H, mainAlienSpr,
+           1, 0);
 
   /* --- Check bounds --- */
-  if (ma->coords.x <= 0 || ma->coords.x >= (SCREEN_W - ALIEN_W)) {
+  if (ma->coords.x <= 0 || ma->coords.x >= (SCREEN_W - MAIN_ALIEN_W)) {
     /* erase before disappearing */
-    fillRectangle(ma->coords.x, ma->coords.y, ALIEN_W, ALIEN_H, 0);
+    fillRectangle(ma->coords.x, ma->coords.y, MAIN_ALIEN_W, MAIN_ALIEN_H, 0);
 
     ma->active = 0;
     ma->nextSpawnTime = now + randomMainAlienDelay();
@@ -1776,16 +1875,18 @@ static int updateAlienBulletCollision(void) {
 }
 
 static void updateMainAlienBulletCollision(void) {
-  mainAlien* ma = &gs.mysteryAlien;
+  MainAlien* ma = &gs.mysteryAlien;
   Bullet* b = &gs.bullet;
   if (b->state != BULLET_FIRE)
     return;
 
-  if (checkCollision(ma->coords.x, ma->coords.y, ALIEN_W, ALIEN_H, b->coords.x,
-                     b->coords.y, BULLET_W, BULLET_H)) {
+  if (checkCollision(ma->coords.x, ma->coords.y, MAIN_ALIEN_W, MAIN_ALIEN_H,
+                     b->coords.x, b->coords.y, BULLET_W, BULLET_H)) {
     gs.score += 50;
+    fillRectangle(ma->coords.x, ma->coords.y, MAIN_ALIEN_W, MAIN_ALIEN_H, 0);
     putImage(ma->coords.x, ma->coords.y, ALIEN_W, ALIEN_H, explosion, 1, 0);
-    delay(50);
+    start_sound_effect_ch1(explode_notes, explode_times, explode_note_count, 0);
+    delay(100);
     fillRectangle(ma->coords.x, ma->coords.y, ALIEN_W, ALIEN_H, 0);
     start_sound_effect_ch1(explode_notes, explode_times, explode_note_count, 0);
 
