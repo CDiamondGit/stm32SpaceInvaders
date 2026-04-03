@@ -691,6 +691,7 @@ int main(void) {
                                enter_game_note_count_ch2, 0);
         delay(500);
         playing(&currentAppState);
+        delay(100);
         break;
       case RECORD:
         showScoreBoard(&currentAppState);
@@ -1400,11 +1401,34 @@ void getPause(PlayingState* ps, AppState* as) {
       printText("To save and exit", 10, 135, RGBToWord(255, 255, 255), 0);
 
       while (1) {
-        if (!(GPIOA->IDR & (1 << 11))) {  // down key to save and exit
+        char c = '0';
+
+        if (serialCharAvailable()) {
+          c = serialGetCharNonBlocking();
+        }
+
+        if (!(GPIOA->IDR & (1 << 11)) ||
+            (c == '\r' || c == '\n')) {  // down key to save and exit
           /* Quit to main menu */
+
           goto save_and_exit;
         }
 
+        if (c != '0') {
+          eputchar(c);
+          eputchar('\r\n');
+        }
+
+        if ((c >= 65 && c <= 90) || (c >= 97 && c <= 122)) {
+          if (position >= 3)
+            continue;
+          initials[position] = c;
+          position++;
+
+          fillRectangle(50, 40, 70, 16, 0);
+          printTextX2(initials, 50, 40, RGBToWord(255, 255, 0), 0);
+          continue;
+        }
         /* right button to select letters-------------- PB4*/
 
         if (!(GPIOB->IDR & (1 << 4))) {  // right key
@@ -1496,6 +1520,7 @@ void getPause(PlayingState* ps, AppState* as) {
 
           *ps = GAMERUNNING;
           *as = MAINMENU;
+          delay(200);
           return;
         }
       }
@@ -1516,6 +1541,17 @@ void getPause(PlayingState* ps, AppState* as) {
     delay(50);
 
     while (1) {
+      char c = 0;
+
+      if (serialCharAvailable()) {
+        c = serialGetCharNonBlocking();
+      }
+
+      if (c != 0) {
+        eputchar(c);
+        eputchar('\r\n');
+      }
+
       /* Highlight selected option */
       printText(selected == 0 ? "> Resume   " : "  Resume   ", 10, 82,
                 RGBToWord(255, 255, 255), 0);
@@ -1523,13 +1559,13 @@ void getPause(PlayingState* ps, AppState* as) {
                 RGBToWord(255, 255, 255), 0);
 
       /* Down button - move selection down */
-      if ((GPIOA->IDR & (1 << 11)) == 0) {
+      if ((GPIOA->IDR & (1 << 11)) == 0 || (c == 's') || (c == 'S')) {
         selected = !selected; /* toggle between 0 and 1 */
         delay(150);           /* debounce                */
       }
 
-      /* Fire/confirm button - PA8 */
-      if ((GPIOB->IDR & (1 << 4)) == 0) {
+      /* Right/confirm button - PB4 */
+      if ((GPIOB->IDR & (1 << 4)) == 0 || (c == 'd') || (c == 'D')) {
         delay(50);
         if (selected == 0) {
           /* Resume */
@@ -1667,6 +1703,7 @@ static void handleInput(PlayingState* ps, AppState* as) {
 
   if (c != 0) {
     eputchar(c);
+    eputchar('\r\n');
   }
 
   /* Right – PB4 or D */
@@ -1697,7 +1734,7 @@ static void handleInput(PlayingState* ps, AppState* as) {
     *ps = PAUSE;
   }
 
-  /* Corner Button ==>  Main Menu*/
+  /* Corner Button ==>  Main Menu  // PA9*/
 
   if ((GPIOA->IDR & (1 << 9)) == 0) {
     delay(50);
@@ -2237,6 +2274,11 @@ static void splashScreen() {
 
   // Animate the filling of the background
   for (int i = 0; i <= loadedBit; i++) {
+    /* Corner Button ==>  Main Menu  // PA9*/
+
+    if ((GPIOA->IDR & (1 << 9)) == 0) {
+      return;
+    }
     int w = i * bitWidth;
 
     // Draw the filled percentage
