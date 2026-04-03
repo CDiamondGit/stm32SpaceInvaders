@@ -5,7 +5,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <stm32f031x6.h>
 #include <time.h>
 #include "display.h"
@@ -94,8 +93,19 @@
 #define LBAR_W 200
 #define LBAR_H 20
 
-#define LBAR_BACKGROUND 0x0000  // black (bakcground)
-#define LBAR_FILL 0x07E0        // green
+/* --- Loading Bar -----------------------------------------------------------
+ */
+#define LBAR_X 10
+#define LBAR_Y 100
+#define LBAR_W 108
+#define LBAR_H 15
+
+#define LBAR_BACKGROUND 57351  // black (background)
+#define LBAR_FILL 57351        // green
+
+#define STAR_RED 63680
+#define STAR_BLUE 1119
+#define STAR_WHITE 65535
 
 #define STAR_RED 63680
 #define STAR_BLUE 1119
@@ -271,6 +281,7 @@ static void renderStats(void);
 static void renderGameOverScreen(PlayingState* ps, AppState* as);
 static void splashScreen();
 static void makeBackground(int starCount);
+static void printAscii();
 
 /*
  * GLOBAL DECLARATIONS
@@ -671,6 +682,9 @@ int main(void) {
         help(&currentAppState);
         break;
       case PLAYING:
+        // Todo ascii art
+        printAscii();
+
         start_sound_effect_ch1(enter_game_notes_ch1, enter_game_times_ch1,
                                enter_game_note_count_ch1, 0);
         start_sound_effect_ch2(enter_game_notes_ch2, enter_game_times_ch2,
@@ -879,9 +893,9 @@ static void setupIO(void) {
   enablePullUp(GPIOA, 8); /* fire  - PA8  */
   pinMode(GPIOA, 11, 0);
   enablePullUp(GPIOA, 11); /* down  - PA11 */
-  pinMode(GPIOA, 2, 1);    /* Lives indicator 1 - PA9*/
-  pinMode(GPIOA, 1, 1);    /* Lives indicator 1 - PA10*/
-  pinMode(GPIOB, 3, 1);    /* Lives indicator 1 - PC15*/
+  pinMode(GPIOA, 10, 1);   /* Lives indicator 1 - PA10*/
+  pinMode(GPIOA, 1, 1);    /* Lives indicator 1 - PA1*/
+  pinMode(GPIOB, 3, 1);    /* Lives indicator 1 - PB3*/
   pinMode(GPIOA, 9, 0);    /* Reset Button */
   enablePullUp(GPIOA, 9);
 }
@@ -902,7 +916,8 @@ static void setupIO(void) {
 
 static void lightLivesIndicator(int lives) {
   // Clear all LEDs
-  GPIOA->BSRR = (1 << (1 + 16)) | (1 << (2 + 16));
+  GPIOA->BSRR = (1 << (1 + 16));
+  GPIOA->BSRR = (1 << (10 + 16));
   GPIOB->BSRR = (1 << (3 + 16));
 
   // Set LEDs
@@ -911,7 +926,7 @@ static void lightLivesIndicator(int lives) {
   if (lives >= 2)
     GPIOB->BSRR = (1 << 3);
   if (lives >= 3)
-    GPIOA->BSRR = (1 << 2);
+    GPIOA->BSRR = (1 << 10);
 }
 /* --- Utility / timing / random -------------------------------------------
  */
@@ -1514,7 +1529,7 @@ void getPause(PlayingState* ps, AppState* as) {
       }
 
       /* Fire/confirm button - PA8 */
-      if ((GPIOA->IDR & (1 << 8)) == 0) {
+      if ((GPIOB->IDR & (1 << 4)) == 0) {
         delay(50);
         if (selected == 0) {
           /* Resume */
@@ -2073,6 +2088,22 @@ static void renderAliens(void) {
   ag->oldOffsetY = ag->offsetY;
 }
 /*
+ * Serial output function:
+ * Print hello world
+ */
+static void printAscii() {
+  eputs("\r\nGood luck! You'll need it.\r\n");
+  eputs("\r\n    @@          @@    \r\n");
+  eputs("\r\n      @@      @@      \r\n");
+  eputs("\r\n    @@@@@@@@@@@@@@    \r\n");
+  eputs("\r\n  @@@@  @@@@@@  @@@@  \r\n");
+  eputs("\r\n@@@@@@@@@@@@@@@@@@@@@@\r\n");
+  eputs("\r\n@@  @@@@@@@@@@@@@@  @@\r\n");
+  eputs("\r\n@@  @@          @@  @@\r\n");
+  eputs("\r\n      @@@@  @@@@      \r\n");
+}
+
+/*
 Dirty-rect ship: erase only the vacated edge strip
 */
 static void renderShip(void) {
@@ -2156,13 +2187,16 @@ static void renderScene(void) {
 }
 
 static void makeBackground(int starCount) {
-  srand(time(NULL));
-
+  randState = milliseconds;
   for (uint16_t i = 0; i < starCount; ++i) {
-    uint16_t x = (uint16_t)(rand() % SCREEN_W);
-    uint16_t y = (uint16_t)(rand() % SCREEN_H);
+    uint16_t x = (uint16_t)(xorshift32() % SCREEN_W);
+    uint16_t y = (uint16_t)(xorshift32() % SCREEN_H);
 
-    int r = rand() % 3;
+    // uint16_t x = (uint16_t)(xorshift32() % SCREEN_W);
+    // uint16_t y = (uint16_t)(xorshift32() % SCREEN_H);
+
+    int r = xorshift32() % 3;
+    // int r = xorshift32() % 3;
     uint16_t colour;
     if (r == 0) {
       colour = STAR_RED;
@@ -2185,7 +2219,8 @@ static void splashScreen() {
   clearDisplay();
 
   // Create the starry background
-  makeBackground(30);
+  // makeBackground(30);
+  loadBackground();
 
   // Create loadedBit variable to make the amount of bit variables there will be
   // (Make it progress smoothly)
@@ -2198,12 +2233,14 @@ static void splashScreen() {
   // Draw the bar background
   drawRectangle(LBAR_X, LBAR_Y, LBAR_W, LBAR_H, LBAR_BACKGROUND);
 
+  printText("LOADING...", 30, LBAR_Y - 10, STAR_WHITE, 0);
+
   // Animate the filling of the background
   for (int i = 0; i <= loadedBit; i++) {
     int w = i * bitWidth;
 
     // Draw the filled percentage
-    drawRectangle(LBAR_X, LBAR_Y, w, LBAR_H, LBAR_FILL);
+    fillRectangle(LBAR_X, LBAR_Y, w, LBAR_H, LBAR_FILL);
     // Delay to make look like loading
     delay(delayMs);
   }
