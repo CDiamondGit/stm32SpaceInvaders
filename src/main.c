@@ -1394,7 +1394,7 @@ void getPause(PlayingState* ps, AppState* as) {
       printText("To save and exit", 10, 135, RGBToWord(255, 255, 255), 0);
 
       while (1) {
-        
+
         if (!(GPIOA->IDR & (1 << 11))) {  // down key to save and exit
           /* Quit to main menu */
           goto save_and_exit;
@@ -2072,7 +2072,15 @@ static void renderAliens(void) {
 */
 static void printAscii()  {
 
-  eputs("\r\nHello, worlds\r\n");
+  eputs("\r\nGood luck! You'll need it.\r\n");
+  eputs("\r\n    ##          ##    \r\n");
+  eputs("\r\n      ##      ##      \r\n");
+  eputs("\r\n    ##############    \r\n");
+  eputs("\r\n  ####  ######  ####  \r\n");
+  eputs("\r\n######################\r\n");
+  eputs("\r\n##  ##############  ##\r\n");
+  eputs("\r\n##  ##          ##  ##\r\n");
+  eputs("\r\n      ####  ####      \r\n");
 
 }
 
