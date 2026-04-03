@@ -15,6 +15,7 @@
 
 /*----GAME
  * FUNCTIONALITY------------------------------------------______---------------------*/
+// score increase value in easy,medium and hard mode
 #define SCORE_INC_EASY 10
 #define SCORE_INC_MED 15
 #define SCORE_INC_HARD 20
@@ -27,15 +28,17 @@
 /* --- Ship ----------------------------------------------------------------- */
 #define SHIP_W 12
 #define SHIP_H 12
-#define SHIP_MIN_X 2
-#define SHIP_MAX_X (SCREEN_W - SHIP_W - 2)
+#define SHIP_MIN_X 2                        // min x pos for ship
+#define SHIP_MAX_X (SCREEN_W - SHIP_W - 2)  // max x pos for ship
 #define SHIP_SPEED 2
 
 /* --- Bullet --------------------------------------------------------------- */
 #define BULLET_W 2
 #define BULLET_H 2
-#define BULLET_OFFSET_X 6
-#define BULLET_OFFSET_Y 13
+#define BULLET_OFFSET_X \
+  6  // x offset from ship pos to keep bullet in nozzle of ship
+#define BULLET_OFFSET_Y \
+  13  // y offset from ship pos to keep bullet in nozzle of ship
 #define BULLET_SPEED 4
 #define ALIEN_BULLET_SPEED 1
 #define BULLET_COLOR 65287
@@ -53,6 +56,9 @@
 #define ALIEN_ORIGIN_X 12 /* grid left edge at game start           */
 #define ALIEN_ORIGIN_Y 20 /* grid top  edge at game start           */
 
+// alien grid dimension
+// width = no of cols * (total width of alien + Xgap) - Xgap
+// height = no of rows * (total width of alien + Ygap) - Ygap
 #define ALIEN_GRID_W \
   (ALIEN_COLS * (ALIEN_W + ALIEN_GAP_X) - ALIEN_GAP_X) /* 75 */
 #define ALIEN_GRID_H \
@@ -83,15 +89,13 @@
 #define HUD_LINE_Y 144
 #define HUD_LINE_COLOR 57351
 
-// #define ALIEN_FIRE_MIN_MS 800
+// alien fire delay bounds
+// randomly delays from min to max ms
 #define ALIEN_FIRE_MIN_MS 800
 #define ALIEN_FIRE_MAX_MS 3000
 
-/* --- Loading Bar -----------------------------------------------------------
- */
-
 /* --- Respawn  ------------------------------------------------------------- */
-#define ALIEN_RESPAWN_FLASH_MS 90
+#define ALIEN_RESPAWN_FLASH_MS 200
 #define ALIEN_RESPAWN_MIN 4
 #define ALIEN_RESPAWN_MAX 12
 
@@ -149,23 +153,24 @@ typedef struct {
 } MainAlien;
 
 typedef struct {
-  int16_t offsetX, offsetY;
-  int16_t oldOffsetX, oldOffsetY;
-  int8_t dirX;
-  uint32_t lastMoveTime;
-  uint8_t status[ALIEN_ROWS][ALIEN_COLS];
-  uint16_t basePosX[ALIEN_COLS];
-  uint16_t basePosY[ALIEN_ROWS];
-  int8_t earToggle;
-  Bullet ab[ALIEN_COLS];
-  uint32_t nextFireTime[ALIEN_COLS];
+  int16_t offsetX, offsetY;       /* current grid offset from base positions */
+  int16_t oldOffsetX, oldOffsetY; /* previous offset for dirty-rect erase */
+  int8_t dirX;                    /* formation direction: +1 right, -1 left */
+  uint32_t lastMoveTime;          /* timestamp of last movement tick */
+  uint8_t status[ALIEN_ROWS][ALIEN_COLS]; /* 0 = alive, 1 = dead */
+  uint16_t basePosX[ALIEN_COLS];          /* base X per column at offset zero */
+  uint16_t basePosY[ALIEN_ROWS];          /* base Y per row at offset zero */
+  int8_t earToggle;      /* alternates sprite frame each move tick */
+  Bullet ab[ALIEN_COLS]; /* one bullet slot per column */
+  uint32_t nextFireTime[ALIEN_COLS]; /* earliest time each column may fire */
 
-  uint8_t nextStatus[ALIEN_ROWS][ALIEN_COLS];
-  uint8_t respawning;
-  uint8_t previewVisible;
-  uint8_t flashStep;
-  uint8_t redrawAll;
-  uint32_t respawnTimer;
+  uint8_t nextStatus[ALIEN_ROWS]
+                    [ALIEN_COLS]; /* staged next-frame status double-buffer */
+  uint8_t respawning;     /* 1 while new-wave respawn sequence is active */
+  uint8_t previewVisible; /* toggles incoming formation preview on/off */
+  uint8_t flashStep;      /* counts flash steps during respawn preview */
+  uint8_t redrawAll;      /* forces full grid repaint next render frame */
+  uint32_t respawnTimer;  /* timestamp driving each respawn animation step */
 } AlienGrid;
 
 /* --- Whole game state ----------------------------------------------------- */
@@ -488,7 +493,13 @@ const uint32_t aliens_spawning_note_count = 3;
 
 /* --- Runtime game globals ------------------------------------------------- */
 static uint32_t lastUpdate = 0;
-static const uint32_t FRAME_DELAY = 16;
+static const uint32_t FRAME_DELAY = 16;  // 1000ms / 16 ms ~ 60 fps
+// decrease to increase fps
+// for eg if set to 8 => 1000ms / 8ms ~ 120 (display cant handle)
+// in other words in a 1 second(1000 ms) 60 frames will be rendered if delay
+// between frame is set to 16 ms so in code it can be used as, if difference
+// between current and last updated time is less than FRAME_DELAY halt
+// everything
 
 AppState currentAppState = MAINMENU;
 GameMode currentGameMode = EASY;
@@ -596,42 +607,6 @@ static const uint16_t explosion[88] = {
     0,    0,     0,     7013,  61747, 7013,  32158, 64354, 11313, 0,     0,
     0,    0,     0,     53562, 1073,  21809, 61747, 2105,  0,     0,     0};
 
-// static const uint16_t mainAlienSpr[352] = {
-//     0,     0,     0,     0,     65320, 65320, 0,     0,     0,     0,     0,
-//     0,     0,     0,     0,     0,     65320, 65320, 0,     0,     0,     0,
-//     0,     0,     0,     0,     65320, 65320, 0,     0,     0,     0,     0,
-//     0,     0,     0,     0,     0,     65320, 65320, 0,     0,     0,     0,
-//     65320, 65320, 0,     0,     0,     0,     65320, 65320, 0,     0,     0,
-//     0,     0,     0,     65320, 65320, 0,     0,     0,     0,     65320,
-//     65320, 65320, 65320, 0,     0,     0,     0,     65320, 65320, 0,     0,
-//     0, 0,     0,     0,     65320, 65320, 0,     0,     0,     0,     65320,
-//     65320, 65320, 65320, 0,     0,     65320, 65320, 65320, 65320, 65320,
-//     65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 0,     0,
-//     65320, 65320, 65320, 65320, 0,     0,     65320, 65320, 65320, 65320,
-//     65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 0,
-//     0,     65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 0,     0,
-//     65320, 65320, 65320, 65320, 65320, 65320, 0,     0,     65320, 65320,
-//     65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 0,
-//     0,     65320, 65320, 65320, 65320, 65320, 65320, 0,     0,     65320,
-//     65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320,
-//     65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320,
-//     65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320,
-//     65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320,
-//     65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 0,     0,
-//     65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320,
-//     65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 0,     0, 0, 0,
-//     65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320,
-//     65320, 65320, 65320, 65320, 65320, 65320, 65320, 65320, 0,     0, 0, 0,
-//     0,     0,     65320, 65320, 0,     0,     0,     0,     0, 0,     0, 0,
-//     0,     0,     65320, 65320, 0,     0,     0,     0, 0,     0,     0, 0,
-//     65320, 65320, 0,     0,     0,     0,     0, 0,     0,     0,     0, 0,
-//     65320, 65320, 0,     0,     0,     0, 0,     0,     65320, 65320, 0, 0,
-//     0,     0,     0,     0,     0, 0,     0,     0,     0,     0,     0, 0,
-//     65320, 65320, 0,     0, 0,     0,     65320, 65320, 0,     0,     0, 0,
-//     0,     0,     0, 0,     0,     0,     0,     0,     0,     0,     65320,
-//     65320, 0,     0,
-// };
-
 static const uint16_t mainAlienSpr[352] = {
     0,     0,     0,     0,     65320, 65320, 0,     0,     0,     0,     0,
     0,     0,     0,     0,     0,     65320, 65320, 0,     0,     0,     0,
@@ -732,6 +707,13 @@ int main(void) {
  */
 
 /* --- Sound / timing / interrupts ----------------------------------------- */
+/*
+start_sound_effect_ch1 and ch2
+notes => array of musical notes defined in music.h
+times => delay between notes
+count => number of notes;
+repeat=> flag 0 - false and 1 - true;
+*/
 void start_sound_effect_ch1(const uint32_t notes[],
                             const uint32_t times[],
                             uint32_t count,
@@ -755,6 +737,7 @@ void start_sound_effect_ch1(const uint32_t notes[],
   }
   __enable_irq();
 }
+
 void start_sound_effect_ch2(const uint32_t notes[],
                             const uint32_t times[],
                             uint32_t count,
@@ -778,6 +761,7 @@ void start_sound_effect_ch2(const uint32_t notes[],
   }
   __enable_irq();
 }
+
 void SysTick_Handler(void) {
   milliseconds++;
 
@@ -936,7 +920,8 @@ static void setupIO(void) {
 
 static void lightLivesIndicator(int lives) {
   // Clear all LEDs
-  GPIOA->BSRR = (1 << (1 + 16)) | (1 << (2 + 16));
+  GPIOA->BSRR = (1 << (1 + 16));
+  GPIOA->BSRR = (1 << (10 + 16));
   GPIOB->BSRR = (1 << (3 + 16));
 
   // Set LEDs
@@ -945,7 +930,7 @@ static void lightLivesIndicator(int lives) {
   if (lives >= 2)
     GPIOB->BSRR = (1 << 3);
   if (lives >= 3)
-    GPIOA->BSRR = (1 << 2);
+    GPIOA->BSRR = (1 << 10);
 }
 /* --- Utility / timing / random -------------------------------------------
  */
@@ -1707,6 +1692,8 @@ void getPause(PlayingState* ps, AppState* as) {
         if (selected == 0) {
           /* Resume */
           fillRectangle(0, 60, SCREEN_W, 50, 0);
+          start_sound_effect_ch2(game_loop_notes, game_loop_times,
+                                 game_loop_note_count, 1);
           *ps = GAMERUNNING;
           return;
         } else {
@@ -1802,12 +1789,14 @@ void playing(AppState* as) {
     }
 
     if (updateAlienBulletCollision()) {
+      // stop_sound_effect_ch2();
       gs.lives -= 1;
       putImage(gs.ship.coords.x, gs.ship.coords.y, ALIEN_W, ALIEN_H, explosion,
                1, 0);
       // delay(200);
       start_sound_effect_ch1(lose_life_notes, lose_life_times,
                              lose_life_note_count, 0);
+
       delay(350);
 
       resetGame();
