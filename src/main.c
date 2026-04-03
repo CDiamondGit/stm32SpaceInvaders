@@ -8,11 +8,11 @@
 #include <time.h>
 #include <stdlib.h>
 #include <stm32f031x6.h>
+#include <time.h>
 #include "display.h"
 #include "musical_notes.h"
 #include "serial.h"
 #include "sound_effects.h"
-
 
 /*----GAME
  * FUNCTIONALITY------------------------------------------______---------------------*/
@@ -85,10 +85,17 @@
 #define HUD_LINE_COLOR 57351
 
 // #define ALIEN_FIRE_MIN_MS 800
-#define ALIEN_FIRE_MIN_MS 200
+#define ALIEN_FIRE_MIN_MS 800
 #define ALIEN_FIRE_MAX_MS 3000
 
+/* --- Loading Bar -----------------------------------------------------------
+ */
+#define LBAR_X 20
+#define LBAR_Y 100
+#define LBAR_W 200
+#define LBAR_H 20
 
+<<<<<<< HEAD
 /* --- Loading Bar ----------------------------------------------------------- */
 #define LBAR_X       20
 #define LBAR_Y       100
@@ -107,7 +114,25 @@
 #define ALIEN_RESPAWN_MIN 4
 #define ALIEN_RESPAWN_MAX 12
 
+=======
+/* --- Loading Bar -----------------------------------------------------------
+ */
+#define LBAR_X 10
+#define LBAR_Y 100
+#define LBAR_W 108
+#define LBAR_H 15
 
+#define LBAR_BACKGROUND 57351  // black (background)
+#define LBAR_FILL 57351        // green
+
+#define STAR_RED 63680
+#define STAR_BLUE 1119
+#define STAR_WHITE 65535
+>>>>>>> main
+
+#define STAR_RED 63680
+#define STAR_BLUE 1119
+#define STAR_WHITE 65535
 
 /*
  * TYPE DECLARATIONS
@@ -480,9 +505,15 @@ const uint32_t lose_life_notes[2] = {FS2_Gb2, FS2_Gb2};
 const uint32_t lose_life_times[2] = {160, 160};
 const uint32_t lose_life_note_count = 2;
 
+<<<<<<< HEAD
 const uint32_t aliens_spawning_notes[1] = {G6};
 const uint32_t aliens_spawning_times[1] = {100};
 const uint32_t aliens_spawning_note_count = 1;
+=======
+const uint32_t aliens_spawning_notes[1] = {G6, B6, G6};
+const uint32_t aliens_spawning_times[1] = {220, 220, 220};
+const uint32_t aliens_spawning_note_count = 3;
+>>>>>>> main
 
 /* --- Runtime game globals ------------------------------------------------- */
 static uint32_t lastUpdate = 0;
@@ -497,8 +528,6 @@ static uint32_t randState;
 static ScoreRecord records[MAX_RECORDS] = {
     {"___", 0000}, {"___", 0000}, {"___", 0000}, {"___", 0000}, {"___", 0000},
 };
-
-
 
 /*
  * ASSET DECLARATIONS
@@ -702,12 +731,19 @@ int main(void) {
         help(&currentAppState);
         break;
       case PLAYING:
+<<<<<<< HEAD
+=======
+        // Todo ascii art
+        printAscii();
+
+>>>>>>> main
         start_sound_effect_ch1(enter_game_notes_ch1, enter_game_times_ch1,
                                enter_game_note_count_ch1, 0);
         start_sound_effect_ch2(enter_game_notes_ch2, enter_game_times_ch2,
                                enter_game_note_count_ch2, 0);
         delay(500);
         playing(&currentAppState);
+        delay(100);
         break;
       case RECORD:
         showScoreBoard(&currentAppState);
@@ -910,9 +946,15 @@ static void setupIO(void) {
   enablePullUp(GPIOA, 8); /* fire  - PA8  */
   pinMode(GPIOA, 11, 0);
   enablePullUp(GPIOA, 11); /* down  - PA11 */
+<<<<<<< HEAD
   pinMode(GPIOA, 2, 1);    /* Lives indicator 1 - PA9*/
   pinMode(GPIOA, 1, 1);    /* Lives indicator 1 - PA10*/
   pinMode(GPIOB, 3, 1);    /* Lives indicator 1 - PC15*/
+=======
+  pinMode(GPIOA, 10, 1);   /* Lives indicator 1 - PA10*/
+  pinMode(GPIOA, 1, 1);    /* Lives indicator 1 - PA1*/
+  pinMode(GPIOB, 3, 1);    /* Lives indicator 1 - PB3*/
+>>>>>>> main
   pinMode(GPIOA, 9, 0);    /* Reset Button */
   enablePullUp(GPIOA, 9);
 }
@@ -1203,7 +1245,7 @@ static void initMainAlien(MainAlien* ma) {
   ma->lastMoveTime = 0;
 }
 
-static void initGameState(void) {
+static void initGameState() {
   gs.highScore = records[0].score;
   randState = milliseconds | 1; /* Ship */
 
@@ -1240,7 +1282,7 @@ static void resetGame(void) {
   fillRectangle(0, 0, SCREEN_W, HUD_LINE_Y, 0);
 
   /* Re-initialise all game state */
-  initGameState();
+  initGameState();  // 0 to preserve Alien Grid
 
   /* Redraw the initial scene */
   renderAliens();
@@ -1538,11 +1580,38 @@ void getPause(PlayingState* ps, AppState* as) {
       printText("To save and exit", 10, 135, RGBToWord(255, 255, 255), 0);
 
       while (1) {
+<<<<<<< HEAD
         if (!(GPIOA->IDR & (1 << 11))) {  // down key to save and exit
+=======
+        char c = '0';
+
+        if (serialCharAvailable()) {
+          c = serialGetCharNonBlocking();
+        }
+
+        if (!(GPIOA->IDR & (1 << 11)) ||
+            (c == '\r' || c == '\n')) {  // down key to save and exit
+>>>>>>> main
           /* Quit to main menu */
+
           goto save_and_exit;
         }
 
+        if (c != '0') {
+          eputchar(c);
+          eputchar('\r\n');
+        }
+
+        if ((c >= 65 && c <= 90) || (c >= 97 && c <= 122)) {
+          if (position >= 3)
+            continue;
+          initials[position] = c;
+          position++;
+
+          fillRectangle(50, 40, 70, 16, 0);
+          printTextX2(initials, 50, 40, RGBToWord(255, 255, 0), 0);
+          continue;
+        }
         /* right button to select letters-------------- PB4*/
 
         if (!(GPIOB->IDR & (1 << 4))) {  // right key
@@ -1634,6 +1703,7 @@ void getPause(PlayingState* ps, AppState* as) {
 
           *ps = GAMERUNNING;
           *as = MAINMENU;
+          delay(200);
           return;
         }
       }
@@ -1654,6 +1724,17 @@ void getPause(PlayingState* ps, AppState* as) {
     delay(50);
 
     while (1) {
+      char c = 0;
+
+      if (serialCharAvailable()) {
+        c = serialGetCharNonBlocking();
+      }
+
+      if (c != 0) {
+        eputchar(c);
+        eputchar('\r\n');
+      }
+
       /* Highlight selected option */
       printText(selected == 0 ? "> Resume   " : "  Resume   ", 10, 82,
                 RGBToWord(255, 255, 255), 0);
@@ -1661,13 +1742,18 @@ void getPause(PlayingState* ps, AppState* as) {
                 RGBToWord(255, 255, 255), 0);
 
       /* Down button - move selection down */
-      if ((GPIOA->IDR & (1 << 11)) == 0) {
+      if ((GPIOA->IDR & (1 << 11)) == 0 || (c == 's') || (c == 'S')) {
         selected = !selected; /* toggle between 0 and 1 */
         delay(150);           /* debounce                */
       }
 
+<<<<<<< HEAD
       /* Fire/confirm button - PA8 */
       if ((GPIOA->IDR & (1 << 8)) == 0) {
+=======
+      /* Right/confirm button - PB4 */
+      if ((GPIOB->IDR & (1 << 4)) == 0 || (c == 'd') || (c == 'D')) {
+>>>>>>> main
         delay(50);
         if (selected == 0) {
           /* Resume */
@@ -1770,10 +1856,13 @@ void playing(AppState* as) {
       gs.lives -= 1;
       putImage(gs.ship.coords.x, gs.ship.coords.y, ALIEN_W, ALIEN_H, explosion,
                1, 0);
-      delay(50);
-      start_sound_effect_ch1(explode_notes, explode_times, explode_note_count,
-                             0);
+      // delay(200);
+      start_sound_effect_ch1(lose_life_notes, lose_life_times,
+                             lose_life_note_count, 0);
+      delay(350);
+
       resetGame();
+
       continue;
     }
 
@@ -1804,6 +1893,7 @@ static void handleInput(PlayingState* ps, AppState* as) {
 
   if (c != 0) {
     eputchar(c);
+    eputchar('\r\n');
   }
 
   /* Right – PB4 or D */
@@ -1834,7 +1924,7 @@ static void handleInput(PlayingState* ps, AppState* as) {
     *ps = PAUSE;
   }
 
-  /* Corner Button ==>  Main Menu*/
+  /* Corner Button ==>  Main Menu  // PA9*/
 
   if ((GPIOA->IDR & (1 << 9)) == 0) {
     delay(50);
@@ -1880,8 +1970,20 @@ static void moveAliens(uint32_t now) {
 
   // If all aliens are gone, start respawn sequence
   if (isAlienGridMt()) {
+<<<<<<< HEAD
     startAlienRespawn();
     return;
+=======
+    stop_sound_effect_ch2();  // stop music briefly
+    start_sound_effect_ch1(game_win_notes_ch1, game_win_times_ch1,
+                           game_win_note_count_ch1, 0);
+    start_sound_effect_ch2(game_win_notes_ch2, game_win_times_ch2,
+                           game_win_note_count_ch2, 0);
+    delay(900);  // let win jingle finish (4 x 200ms + buffer)
+    start_sound_effect_ch2(game_loop_notes, game_loop_times,
+                           game_loop_note_count, 1);
+    initAlienGrid();
+>>>>>>> main
   }
 
   // Control movement speed (frame timing)
@@ -1945,6 +2047,11 @@ static void moveMainAlien(MainAlien* ma) {
   if (!ma->active) {
     if (now >= ma->nextSpawnTime) {
       ma->active = 1;
+
+      if (channel1_notes == 0) {  // only play if ch1 is free
+        start_sound_effect_ch1(aliens_spawning_notes, aliens_spawning_times,
+                               aliens_spawning_note_count, 0);
+      }
 
       /* Random direction */
       if (xorshift32() & 1) {
@@ -2237,6 +2344,25 @@ static void renderAliens(void) {
   ag->redrawAll = 0;
 }
 /*
+<<<<<<< HEAD
+=======
+ * Serial output function:
+ * Print hello world
+ */
+static void printAscii() {
+  eputs("\r\nGood luck! You'll need it.\r\n");
+  eputs("\r\n    @@          @@    \r\n");
+  eputs("\r\n      @@      @@      \r\n");
+  eputs("\r\n    @@@@@@@@@@@@@@    \r\n");
+  eputs("\r\n  @@@@  @@@@@@  @@@@  \r\n");
+  eputs("\r\n@@@@@@@@@@@@@@@@@@@@@@\r\n");
+  eputs("\r\n@@  @@@@@@@@@@@@@@  @@\r\n");
+  eputs("\r\n@@  @@          @@  @@\r\n");
+  eputs("\r\n      @@@@  @@@@      \r\n");
+}
+
+/*
+>>>>>>> main
 Dirty-rect ship: erase only the vacated edge strip
 */
 static void renderShip(void) {
@@ -2319,9 +2445,13 @@ static void renderScene(void) {
   renderStats();
 }
 
-
 static void makeBackground(int starCount) {
+  randState = milliseconds;
+  for (uint16_t i = 0; i < starCount; ++i) {
+    uint16_t x = (uint16_t)(xorshift32() % SCREEN_W);
+    uint16_t y = (uint16_t)(xorshift32() % SCREEN_H);
 
+<<<<<<< HEAD
   srand(time(NULL));
 
  for (uint16_t i = 0; i < starCount; ++i) {
@@ -2339,41 +2469,84 @@ static void makeBackground(int starCount) {
         }
 
         putPixel(x, y, colour);
+=======
+    // uint16_t x = (uint16_t)(xorshift32() % SCREEN_W);
+    // uint16_t y = (uint16_t)(xorshift32() % SCREEN_H);
+
+    int r = xorshift32() % 3;
+    // int r = xorshift32() % 3;
+    uint16_t colour;
+    if (r == 0) {
+      colour = STAR_RED;
+    } else if (r == 1) {
+      colour = STAR_BLUE;
+    } else {
+      colour = STAR_WHITE;
+>>>>>>> main
     }
 
-
+    putPixel(x, y, colour);
+  }
 }
-
 
 /*
 Splash screen with loading bar
 */
 
+<<<<<<< HEAD
  static void splashScreen() {
     // Clear display as precaution
     clearDisplay();
 
     //Create the starry background
     makeBackground(30);
+=======
+static void splashScreen() {
+  // Clear display as precaution
+  clearDisplay();
+>>>>>>> main
 
-    // Create loadedBit variable to make the amount of bit variables there will be (Make it progress smoothly)
-    const int loadedBit = 50;
-    // Pixels loaded per individual loaded bit
-    const uint16_t bitWidth = LBAR_W / loadedBit;
-    // delay until three seconds
-    const uint16_t delayMs = 3000 / loadedBit;
+  // Create the starry background
+  // makeBackground(30);
+  loadBackground();
 
-   //Draw the bar background
-    drawRectangle(LBAR_X, LBAR_Y, LBAR_W, LBAR_H, LBAR_BACKGROUND);
+  // Create loadedBit variable to make the amount of bit variables there will be
+  // (Make it progress smoothly)
+  const int loadedBit = 50;
+  // Pixels loaded per individual loaded bit
+  const uint16_t bitWidth = LBAR_W / loadedBit;
+  // delay until three seconds
+  const uint16_t delayMs = 3000 / loadedBit;
 
+<<<<<<< HEAD
   //Animate the filling of the background
     for (int i = 0; i <= loadedBit; i++) {
+=======
+  // Draw the bar background
+  drawRectangle(LBAR_X, LBAR_Y, LBAR_W, LBAR_H, LBAR_BACKGROUND);
 
-        int w = i * bitWidth;
+  printText("LOADING...", 30, LBAR_Y - 10, STAR_WHITE, 0);
+>>>>>>> main
 
+  // Animate the filling of the background
+  for (int i = 0; i <= loadedBit; i++) {
+    /* Corner Button ==>  Main Menu  // PA9*/
+
+<<<<<<< HEAD
         // Draw the filled percentage 
         drawRectangle(LBAR_X, LBAR_Y, w, LBAR_H, LBAR_FILL);
         // Delay to make look like loading
         delay(delayMs);
+=======
+    if ((GPIOA->IDR & (1 << 9)) == 0) {
+      return;
+>>>>>>> main
     }
+    int w = i * bitWidth;
+
+    // Draw the filled percentage
+    fillRectangle(LBAR_X, LBAR_Y, w, LBAR_H, LBAR_FILL);
+    // Delay to make look like loading
+    delay(delayMs);
+  }
 }
