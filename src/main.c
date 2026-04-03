@@ -5,6 +5,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <time.h>
+#include <stdlib.h>
 #include <stm32f031x6.h>
 #include "display.h"
 #include "musical_notes.h"
@@ -88,17 +90,22 @@
 
 
 /* --- Loading Bar ----------------------------------------------------------- */
-#define LBAR_X       10
+#define LBAR_X       20
 #define LBAR_Y       100
-#define LBAR_W       108
-#define LBAR_H       15
+#define LBAR_W       200
+#define LBAR_H       20
 
-#define LBAR_BACKGROUND      57351   // black (background)
-#define LBAR_FILL    57351   // green
+#define LBAR_BACKGROUND      0x0000   // black (bakcground)
+#define LBAR_FILL    0x07E0   // green
 
 #define STAR_RED    63680
 #define STAR_BLUE   1119
 #define STAR_WHITE  65535
+
+/* --- Respawn  ------------------------------------------------------------- */
+#define ALIEN_RESPAWN_FLASH_MS 90
+#define ALIEN_RESPAWN_MIN 4
+#define ALIEN_RESPAWN_MAX 12
 
 
 
@@ -152,6 +159,13 @@ typedef struct {
   int8_t earToggle;
   Bullet ab[ALIEN_COLS];
   uint32_t nextFireTime[ALIEN_COLS];
+
+  uint8_t nextStatus[ALIEN_ROWS][ALIEN_COLS];
+  uint8_t respawning;
+  uint8_t previewVisible;
+  uint8_t flashStep;
+  uint8_t redrawAll;
+  uint32_t respawnTimer;
 } AlienGrid;
 
 /* --- Whole game state ----------------------------------------------------- */
@@ -260,8 +274,7 @@ static void updatePlayerCollision(void);
 static int checkGameOver(void);
 static void updateMainAlienBulletCollision(void);
 
-/* --- Rendering
-   ------------------------------------------------------------ */
+/* --- Rendering ------------------------------------------------------------ */
 static void renderAliens(void);
 static void renderShip(void);
 static void renderPlayerBullet(void);
@@ -272,7 +285,10 @@ static void renderStats(void);
 static void renderGameOverScreen(PlayingState* ps, AppState* as);
 static void splashScreen();
 static void makeBackground(int starCount);
-static void printAscii();
+static void buildRandomAlienPattern(void);
+static void startAlienRespawn(void);
+static void applyAlienRespawnPattern(void);
+static void updateAlienRespawn(uint32_t now);
 
 /*
  * GLOBAL DECLARATIONS
@@ -446,11 +462,11 @@ const uint32_t game_loop_note_count = 768;
 
 const uint32_t game_win_notes_ch1[4] = {C3, E3, G3, C4};
 const uint32_t game_win_times_ch1[4] = {200, 200, 200, 200};
-const uint32_t game_win_note_count_ch1 = 0;
+const uint32_t game_win_note_count_ch1 = 4;
 
 const uint32_t game_win_notes_ch2[4] = {C5, E5, G5, C6};
 const uint32_t game_win_times_ch2[4] = {200, 200, 200, 200};
-const uint32_t game_win_note_count_ch2 = 0;
+const uint32_t game_win_note_count_ch2 = 4;
 
 const uint32_t game_lose_notes_ch1[4] = {C4, B3, AS3_Bb3, A3};
 const uint32_t game_lose_times_ch1[4] = {200, 200, 200, 200};
@@ -464,9 +480,9 @@ const uint32_t lose_life_notes[2] = {FS2_Gb2, FS2_Gb2};
 const uint32_t lose_life_times[2] = {160, 160};
 const uint32_t lose_life_note_count = 2;
 
-const uint32_t aliens_spawning_notes[1] = {G6, G6, G6};
-const uint32_t aliens_spawning_times[1] = {220, 220, 220};
-const uint32_t aliens_spawning_note_count = 3;
+const uint32_t aliens_spawning_notes[1] = {G6};
+const uint32_t aliens_spawning_times[1] = {100};
+const uint32_t aliens_spawning_note_count = 1;
 
 /* --- Runtime game globals ------------------------------------------------- */
 static uint32_t lastUpdate = 0;
@@ -651,6 +667,17 @@ static const uint16_t mainAlienSpr[352] = {
     0,     0,     0,     0,     0,     0,     0,     65320, 65320, 0,     0,
 };
 
+static const uint16_t respawn_flicker[88] = {
+    0,     65535, 0,     0,     0,     0,     0,     0,     0,     65535, 0,     
+    0,     0,     65535, 0,     0,     0,     0,     0,     65535, 0,     0,
+    0,     0,     0,     65535, 0,     0,     0,     65535, 0,     0,     0,     
+    0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     
+    0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     
+    0,     0,     0,     65535, 0,     0,     0,     65535, 0,     0,     0,     
+    0,     0,     65535, 0,     0,     0,     0,     0,     65535, 0,     0, 
+    0,     65535, 0,     0,     0,     0,     0,     0,     0,     65535, 0,
+};
+
 /*
  * 10. MAIN
  */
@@ -663,7 +690,6 @@ int main(void) {
   initSound();
   initSound2();
 
-  
   splashScreen();
   // Game Begins
   while (1) {
@@ -676,9 +702,6 @@ int main(void) {
         help(&currentAppState);
         break;
       case PLAYING:
-        //Todo ascii art
-        printAscii();
-         
         start_sound_effect_ch1(enter_game_notes_ch1, enter_game_times_ch1,
                                enter_game_note_count_ch1, 0);
         start_sound_effect_ch2(enter_game_notes_ch2, enter_game_times_ch2,
@@ -887,9 +910,9 @@ static void setupIO(void) {
   enablePullUp(GPIOA, 8); /* fire  - PA8  */
   pinMode(GPIOA, 11, 0);
   enablePullUp(GPIOA, 11); /* down  - PA11 */
-  pinMode(GPIOA, 10, 1);    /* Lives indicator 1 - PA10*/
-  pinMode(GPIOA, 1, 1);    /* Lives indicator 1 - PA1*/
-  pinMode(GPIOB, 3, 1);    /* Lives indicator 1 - PB3*/
+  pinMode(GPIOA, 2, 1);    /* Lives indicator 1 - PA9*/
+  pinMode(GPIOA, 1, 1);    /* Lives indicator 1 - PA10*/
+  pinMode(GPIOB, 3, 1);    /* Lives indicator 1 - PC15*/
   pinMode(GPIOA, 9, 0);    /* Reset Button */
   enablePullUp(GPIOA, 9);
 }
@@ -910,8 +933,7 @@ static void setupIO(void) {
 
 static void lightLivesIndicator(int lives) {
   // Clear all LEDs
-  GPIOA->BSRR = (1 << (1 + 16));
-  GPIOA->BSRR = (1 << (10 + 16));
+  GPIOA->BSRR = (1 << (1 + 16)) | (1 << (2 + 16));
   GPIOB->BSRR = (1 << (3 + 16));
 
   // Set LEDs
@@ -920,7 +942,7 @@ static void lightLivesIndicator(int lives) {
   if (lives >= 2)
     GPIOB->BSRR = (1 << 3);
   if (lives >= 3)
-    GPIOA->BSRR = (1 << 10);
+    GPIOA->BSRR = (1 << 2);
 }
 /* --- Utility / timing / random -------------------------------------------
  */
@@ -1020,28 +1042,150 @@ static void initAlienGrid() {
   AlienGrid* ag = &gs.aliens;
   ag->offsetX = ag->oldOffsetX = ALIEN_ORIGIN_X;
   ag->offsetY = ag->oldOffsetY = ALIEN_ORIGIN_Y;
-  ag->dirX = -1; /* start moving right */
+  ag->dirX = -1;
   ag->earToggle = 0;
   ag->lastMoveTime = 0;
 
-  /* Precompute relative per-cell offsets (never change during play) */
+  ag->respawning = 0;
+  ag->previewVisible = 0;
+  ag->flashStep = 0;
+  ag->redrawAll = 1;
+  ag->respawnTimer = 0;
+
   for (int i = 0; i < ALIEN_ROWS; i++)
     ag->basePosY[i] = (uint16_t)(i * (ALIEN_H + ALIEN_GAP_Y));
   for (int j = 0; j < ALIEN_COLS; j++)
     ag->basePosX[j] = (uint16_t)(j * (ALIEN_W + ALIEN_GAP_X));
 
-  // putImage((uint16_t)(ag->offsetX + ag->basePosX[j]),
-  //                (uint16_t)(ag->offsetY + ag->basePosY[i]), ALIEN_W, ALIEN_H,
-  //                redAlien[ag->earToggle], 1, 0);
-
-  /* All aliens alive */
-  for (int i = 0; i < ALIEN_ROWS; i++)
-    for (int j = 0; j < ALIEN_COLS; j++)
+  for (int i = 0; i < ALIEN_ROWS; i++) {
+    for (int j = 0; j < ALIEN_COLS; j++) {
       ag->status[i][j] = 0;
+      ag->nextStatus[i][j] = 1;
+    }
+  }
 
   for (int i = 0; i < ALIEN_COLS; i++) {
     parkAlienBullet(i);
     ag->nextFireTime[i] = milliseconds + randomFireDelay();
+  }
+}
+
+static void buildRandomAlienPattern(void) {
+  AlienGrid* ag = &gs.aliens;
+
+  int total = ALIEN_ROWS * ALIEN_COLS;
+  int target = ALIEN_RESPAWN_MIN +
+               (xorshift32() % (ALIEN_RESPAWN_MAX - ALIEN_RESPAWN_MIN + 1));
+
+  if (target > total)
+    target = total;
+
+  for (int i = 0; i < ALIEN_ROWS; i++) {
+    for (int j = 0; j < ALIEN_COLS; j++) {
+      ag->nextStatus[i][j] = 1;   /* dead / empty */
+    }
+  }
+
+  int placed = 0;
+  while (placed < target) {
+    int idx = xorshift32() % total;
+    int r = idx / ALIEN_COLS;
+    int c = idx % ALIEN_COLS;
+
+    if (ag->nextStatus[r][c] != 0) {
+      ag->nextStatus[r][c] = 0;   /* alive */
+      placed++;
+    }
+  }
+}
+
+static void startAlienRespawn(void) {
+  AlienGrid* ag = &gs.aliens;
+
+  ag->respawning = 1;
+  ag->previewVisible = 0;
+  ag->flashStep = 0;
+  ag->respawnTimer = milliseconds;
+  ag->redrawAll = 1;
+
+  ag->offsetX = ALIEN_ORIGIN_X;
+  ag->offsetY = ALIEN_ORIGIN_Y;
+  ag->oldOffsetX = ALIEN_ORIGIN_X;
+  ag->oldOffsetY = ALIEN_ORIGIN_Y;
+  ag->dirX = -1;
+  ag->earToggle = 0;
+  ag->lastMoveTime = milliseconds;
+
+  buildRandomAlienPattern();
+
+  resetPlayerBullet();
+
+  for (int j = 0; j < ALIEN_COLS; j++) {
+    fillRectangle(gs.aliens.ab[j].coords.x, gs.aliens.ab[j].coords.y,
+                  BULLET_W, BULLET_H, 0);
+    fillRectangle(gs.aliens.ab[j].coords.oldX, gs.aliens.ab[j].coords.oldY,
+                  BULLET_W, BULLET_H, 0);
+    gs.aliens.ab[j].state = BULLET_READY;
+  }
+}
+
+static void applyAlienRespawnPattern(void) {
+  AlienGrid* ag = &gs.aliens;
+
+  for (int i = 0; i < ALIEN_ROWS; i++) {
+    for (int j = 0; j < ALIEN_COLS; j++) {
+      ag->status[i][j] = ag->nextStatus[i][j];
+    }
+  }
+
+  for (int j = 0; j < ALIEN_COLS; j++) {
+    parkAlienBullet(j);
+    ag->nextFireTime[j] = milliseconds + randomFireDelay();
+  }
+
+  ag->respawning = 0;
+  ag->previewVisible = 0;
+  ag->flashStep = 0;
+  ag->redrawAll = 1;
+  ag->lastMoveTime = milliseconds;
+  ag->oldOffsetX = ag->offsetX;
+  ag->oldOffsetY = ag->offsetY;
+}
+
+static void updateAlienRespawn(uint32_t now) {
+  AlienGrid* ag = &gs.aliens;
+
+  if (!ag->respawning)
+    return;
+
+  if (now - ag->respawnTimer < ALIEN_RESPAWN_FLASH_MS)
+    return;
+
+  ag->respawnTimer = now;
+  ag->flashStep++;
+
+  switch (ag->flashStep) {
+    case 1:
+    case 3:
+    case 5:
+      ag->previewVisible = 1;
+      ag->redrawAll = 1;
+      start_sound_effect_ch1(aliens_spawning_notes,
+                             aliens_spawning_times,
+                             aliens_spawning_note_count,
+                             0);
+      break;
+
+    case 2:
+    case 4:
+    case 6:
+      ag->previewVisible = 0;
+      ag->redrawAll = 1;
+      break;
+
+    case 7:
+      applyAlienRespawnPattern();
+      break;
   }
 }
 
@@ -1071,7 +1215,7 @@ static void initGameState(void) {
     gs.score_inc = SCORE_INC_MED;
   } else {
     gs.alienSpeed = ALIEN_MOVE_MS_HARD;
-    gs.score_inc - SCORE_INC_HARD;
+    gs.score_inc = SCORE_INC_HARD;
   }
 
   gs.ship.coords.x = gs.ship.coords.oldX = 58;
@@ -1394,7 +1538,6 @@ void getPause(PlayingState* ps, AppState* as) {
       printText("To save and exit", 10, 135, RGBToWord(255, 255, 255), 0);
 
       while (1) {
-        
         if (!(GPIOA->IDR & (1 << 11))) {  // down key to save and exit
           /* Quit to main menu */
           goto save_and_exit;
@@ -1524,7 +1667,7 @@ void getPause(PlayingState* ps, AppState* as) {
       }
 
       /* Fire/confirm button - PA8 */
-      if ((GPIOB->IDR & (1 << 4)) == 0) {
+      if ((GPIOA->IDR & (1 << 8)) == 0) {
         delay(50);
         if (selected == 0) {
           /* Resume */
@@ -1564,6 +1707,7 @@ void playing(AppState* as) {
                          1);
 
   PlayingState currentPlayingState = GAMERUNNING;
+
   /* Game loop */
   while (1) {
     uint32_t now = milliseconds;
@@ -1588,18 +1732,6 @@ void playing(AppState* as) {
       gs.bullet.coords.y = gs.ship.coords.y - BULLET_OFFSET_Y;
     }
 
-    AlienGrid* ag = &gs.aliens;
-
-    for (int j = 0; j < ALIEN_COLS; j++) {
-      Bullet* b = &ag->ab[j];
-      if (b->state == BULLET_FIRE) {
-        b->coords.y += b->speed; /* alien bullets go DOWN */
-        if (b->coords.y > HUD_LINE_Y - 5)
-          resetAlienBullet(j);
-      }
-      /* READY bullets track the grid in moveAliens/parkAlienBullet */
-    }
-
     handleInput(&currentPlayingState, as); /* buttons-> positions*/
 
     if (*as == MAINMENU)
@@ -1611,16 +1743,28 @@ void playing(AppState* as) {
         return; /* quit was selected */
       continue;
     }
+
     updateMainAlienBulletCollision();
     moveMainAlien(&gs.mysteryAlien);
-    moveAliens(now);         /* now = time, timer-> alien grid shift */
-    updateAlienFire(now);    // adds random delay to alien firing
-    updatePlayerCollision(); /* bullet    -> alien grid       */
-    /*
-    TODO :
-    implement alien bullet. | redrawing every alien that has overlapped
-    with bullet
-    */
+
+    AlienGrid* ag = &gs.aliens;
+
+    if (!ag->respawning) {
+      for (int j = 0; j < ALIEN_COLS; j++) {
+        Bullet* b = &ag->ab[j];
+        if (b->state == BULLET_FIRE) {
+          b->coords.y += b->speed; /* alien bullets go DOWN */
+          if (b->coords.y > HUD_LINE_Y - 5)
+            resetAlienBullet(j);
+        }
+      }
+
+      moveAliens(now);
+      updateAlienFire(now);
+      updatePlayerCollision();
+    } else {
+      updateAlienRespawn(now);
+    }
 
     if (updateAlienBulletCollision()) {
       gs.lives -= 1;
@@ -1642,6 +1786,7 @@ void playing(AppState* as) {
       renderGameOverScreen(&currentPlayingState, as);
       continue;
     }
+
     renderScene(); /* positions -> screen           */
     lightLivesIndicator(gs.lives);
   }
@@ -1729,13 +1874,20 @@ static uint16_t getLowestAlienY(void) {
 static void moveAliens(uint32_t now) {
   AlienGrid* ag = &gs.aliens;
 
-  if (now - ag->lastMoveTime < gs.alienSpeed)
+  // Stop movement while respawning
+  if (ag->respawning)
     return;
 
-  ag->lastMoveTime = now;
+  // If all aliens are gone, start respawn sequence
   if (isAlienGridMt()) {
-    initAlienGrid();
+    startAlienRespawn();
+    return;
   }
+
+  // Control movement speed (frame timing)
+  if (now - ag->lastMoveTime < gs.alienSpeed)
+    return;
+  ag->lastMoveTime = now;
 
   ag->oldOffsetX = ag->offsetX;
   ag->oldOffsetY = ag->offsetY;
@@ -1746,9 +1898,8 @@ static void moveAliens(uint32_t now) {
   if (nextX < ALIEN_MIN_X || nextX > ALIEN_MAX_X) {
     /* Hit a wall: drop down, reverse direction, no horizontal step */
 
-    // random fire on wall hit,
-    // TODO: take this function out and only run in certain interval instead
-    // of every wall hit...
+    // Random fire on wall hit
+    // TODO: move this to a timed system instead of per wall hit
     for (int j = 0; j < ALIEN_COLS; j++) {
       if (ag->ab[j].state == BULLET_READY && shouldFire(12))
         ag->ab[j].state = BULLET_FIRE;
@@ -1764,6 +1915,7 @@ static void moveAliens(uint32_t now) {
       parkAlienBullet(j);
   }
 }
+
 static void updateAlienFire(uint32_t now) {
   AlienGrid* ag = &gs.aliens;
   for (int j = 0; j < ALIEN_COLS; j++) {
@@ -2031,51 +2183,59 @@ static void renderAliens(void) {
   AlienGrid* ag = &gs.aliens;
 
   /* Nothing changed this frame - skip entirely */
-  if (ag->offsetX == ag->oldOffsetX && ag->offsetY == ag->oldOffsetY)
+  if (!ag->redrawAll &&
+      !ag->respawning &&
+      ag->offsetX == ag->oldOffsetX &&
+      ag->offsetY == ag->oldOffsetY)
     return;
 
   /* 1. Erase the full bounding box at the OLD position */
-  fillRectangle((uint16_t)ag->oldOffsetX, (uint16_t)ag->oldOffsetY,
-                ALIEN_GRID_W, ALIEN_GRID_H, 0);
+  if (ag->redrawAll || ag->respawning) {
+    fillRectangle((uint16_t)ag->offsetX, (uint16_t)ag->offsetY,
+                  ALIEN_GRID_W, ALIEN_GRID_H, 0);
+  } else {
+    fillRectangle((uint16_t)ag->oldOffsetX, (uint16_t)ag->oldOffsetY,
+                  ALIEN_GRID_W, ALIEN_GRID_H, 0);
+  }
 
   /* 2. Blit alive aliens at the NEW position */
   for (int i = 0; i < ALIEN_ROWS; i++) {
     for (int j = 0; j < ALIEN_COLS; j++) {
+
+      if (ag->respawning) {
+        if (ag->previewVisible && ag->nextStatus[i][j] == 0) {
+          putImage((uint16_t)(ag->offsetX + ag->basePosX[j]),
+                   (uint16_t)(ag->offsetY + ag->basePosY[i]),
+                   ALIEN_W, ALIEN_H, respawn_flicker, 1, 0);
+        }
+        continue;
+      }
+
       if (ag->status[i][j] != 0)
         continue;
 
       if (i == 0) {
         putImage((uint16_t)(ag->offsetX + ag->basePosX[j]),
-                 (uint16_t)(ag->offsetY + ag->basePosY[i]), ALIEN_W, ALIEN_H,
-                 redAlien[ag->earToggle], 1, 0);
+                 (uint16_t)(ag->offsetY + ag->basePosY[i]),
+                 ALIEN_W, ALIEN_H, redAlien[ag->earToggle], 1, 0);
       }
       if (i == 1) {
         putImage((uint16_t)(ag->offsetX + ag->basePosX[j]),
-                 (uint16_t)(ag->offsetY + ag->basePosY[i]), ALIEN_W, ALIEN_H,
-                 greenAlien[ag->earToggle], 1, 0);
+                 (uint16_t)(ag->offsetY + ag->basePosY[i]),
+                 ALIEN_W, ALIEN_H, greenAlien[ag->earToggle], 1, 0);
       }
       if (i >= 2) {
         putImage((uint16_t)(ag->offsetX + ag->basePosX[j]),
-                 (uint16_t)(ag->offsetY + ag->basePosY[i]), ALIEN_W, ALIEN_H,
-                 blueAlienBoth[ag->earToggle], 1, 0);
+                 (uint16_t)(ag->offsetY + ag->basePosY[i]),
+                 ALIEN_W, ALIEN_H, blueAlienBoth[ag->earToggle], 1, 0);
       }
     }
   }
 
-  /* 3. Sync so next frame knows nothing changed unless moveAliens runs */
   ag->oldOffsetX = ag->offsetX;
   ag->oldOffsetY = ag->offsetY;
+  ag->redrawAll = 0;
 }
-/*
-* Serial output function: 
-* Print hello world
-*/
-static void printAscii()  {
-
-  eputs("\r\nHello, worlds\r\n");
-
-}
-
 /*
 Dirty-rect ship: erase only the vacated edge strip
 */
@@ -2162,18 +2322,13 @@ static void renderScene(void) {
 
 static void makeBackground(int starCount) {
 
-    randState = milliseconds;
+  srand(time(NULL));
+
  for (uint16_t i = 0; i < starCount; ++i) {
+        uint16_t x = (uint16_t)(rand() % SCREEN_W);
+        uint16_t y = (uint16_t)(rand() % SCREEN_H);
 
-      
-        uint16_t x = (uint16_t)(xorshift32() % SCREEN_W);
-        uint16_t y = (uint16_t)(xorshift32() % SCREEN_H);
-
-        // uint16_t x = (uint16_t)(xorshift32() % SCREEN_W);
-        // uint16_t y = (uint16_t)(xorshift32() % SCREEN_H);
-
-        int r = xorshift32() % 3; 
-        // int r = xorshift32() % 3; 
+        int r = rand() % 3; 
         uint16_t colour;
         if (r==0) {
           colour = STAR_RED;
@@ -2197,10 +2352,9 @@ Splash screen with loading bar
  static void splashScreen() {
     // Clear display as precaution
     clearDisplay();
-    
+
     //Create the starry background
-    //makeBackground(30);
-    loadBackground();
+    makeBackground(30);
 
     // Create loadedBit variable to make the amount of bit variables there will be (Make it progress smoothly)
     const int loadedBit = 50;
@@ -2212,15 +2366,13 @@ Splash screen with loading bar
    //Draw the bar background
     drawRectangle(LBAR_X, LBAR_Y, LBAR_W, LBAR_H, LBAR_BACKGROUND);
 
-    printText("LOADING...", 30,LBAR_Y-10,STAR_WHITE,0);
-
   //Animate the filling of the background
     for (int i = 0; i <= loadedBit; i++) {
 
         int w = i * bitWidth;
 
         // Draw the filled percentage 
-        fillRectangle(LBAR_X, LBAR_Y, w, LBAR_H, LBAR_FILL);
+        drawRectangle(LBAR_X, LBAR_Y, w, LBAR_H, LBAR_FILL);
         // Delay to make look like loading
         delay(delayMs);
     }
