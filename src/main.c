@@ -663,9 +663,7 @@ int main(void) {
   initSound();
   initSound2();
 
-  if (serialCharAvailable()) {
-    printAscii();
-  }
+  
   splashScreen();
   // Game Begins
   while (1) {
@@ -678,6 +676,9 @@ int main(void) {
         help(&currentAppState);
         break;
       case PLAYING:
+        //Todo ascii art
+        printAscii();
+         
         start_sound_effect_ch1(enter_game_notes_ch1, enter_game_times_ch1,
                                enter_game_note_count_ch1, 0);
         start_sound_effect_ch2(enter_game_notes_ch2, enter_game_times_ch2,
@@ -1393,6 +1394,7 @@ void getPause(PlayingState* ps, AppState* as) {
       printText("To save and exit", 10, 135, RGBToWord(255, 255, 255), 0);
 
       while (1) {
+        
         if (!(GPIOA->IDR & (1 << 11))) {  // down key to save and exit
           /* Quit to main menu */
           goto save_and_exit;
