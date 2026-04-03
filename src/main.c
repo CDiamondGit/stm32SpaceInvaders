@@ -2073,14 +2073,14 @@ static void renderAliens(void) {
 static void printAscii()  {
 
   eputs("\r\nGood luck! You'll need it.\r\n");
-  eputs("\r\n    ##          ##    \r\n");
-  eputs("\r\n      ##      ##      \r\n");
-  eputs("\r\n    ##############    \r\n");
-  eputs("\r\n  ####  ######  ####  \r\n");
-  eputs("\r\n######################\r\n");
-  eputs("\r\n##  ##############  ##\r\n");
-  eputs("\r\n##  ##          ##  ##\r\n");
-  eputs("\r\n      ####  ####      \r\n");
+  eputs("\r\n    @@          @@    \r\n");
+  eputs("\r\n      @@      @@      \r\n");
+  eputs("\r\n    @@@@@@@@@@@@@@    \r\n");
+  eputs("\r\n  @@@@  @@@@@@  @@@@  \r\n");
+  eputs("\r\n@@@@@@@@@@@@@@@@@@@@@@\r\n");
+  eputs("\r\n@@  @@@@@@@@@@@@@@  @@\r\n");
+  eputs("\r\n@@  @@          @@  @@\r\n");
+  eputs("\r\n      @@@@  @@@@      \r\n");
 
 }
 
