@@ -296,23 +296,23 @@ volatile uint32_t channel2_note_index = 0;
 volatile int32_t channel2_note_timer = 0;
 
 /* --- Sound effect data ---------------------------------------------------- */
-const uint32_t shoot_notes[] = {D5, D4, D5};
-const uint32_t shoot_times[] = {80, 100, 80};
+const uint32_t shoot_notes[3] = {D5, D4, D5};
+const uint32_t shoot_times[3] = {80, 100, 80};
 const uint32_t shoot_note_count = 3;
 
-const uint32_t explode_notes[] = {F4, D4, C4, A3, F3, D3, C3, A2, F2, D2, C2};
-const uint32_t explode_times[] = {20, 20, 25, 25, 30, 35, 35, 40, 40, 45, 55};
+const uint32_t explode_notes[11] = {F4, D4, C4, A3, F3, D3, C3, A2, F2, D2, C2};
+const uint32_t explode_times[11] = {20, 20, 25, 25, 30, 35, 35, 40, 40, 45, 55};
 const uint32_t explode_note_count = 11;
 
-const uint32_t enter_game_notes_ch1[] = {C3, D3, G3};
-const uint32_t enter_game_times_ch1[] = {150, 150, 150};
+const uint32_t enter_game_notes_ch1[3] = {C3, D3, G3};
+const uint32_t enter_game_times_ch1[3] = {150, 150, 150};
 const uint32_t enter_game_note_count_ch1 = 3;
 
-const uint32_t enter_game_notes_ch2[] = {C6, D6, G6};
-const uint32_t enter_game_times_ch2[] = {150, 150, 150};
+const uint32_t enter_game_notes_ch2[3] = {C6, D6, G6};
+const uint32_t enter_game_times_ch2[3] = {150, 150, 150};
 const uint32_t enter_game_note_count_ch2 = 3;
 
-const uint32_t game_loop_notes[] = {
+const uint32_t game_loop_notes[768] = {
     REST,    G5,      A5,      AS5_Bb5, A5,      F5,      A5,      G5,
     REST,    G5,      A5,      AS5_Bb5, C6,      AS5_Bb5, A5,      G5,
     REST,    G5,      A5,      AS5_Bb5, A5,      F5,      A5,      G5,
@@ -397,8 +397,7 @@ const uint32_t game_loop_notes[] = {
     FS5_Gb5, AS5_Bb5, GS6_Ab6, DS5_Eb5, AS5_Bb5, GS6_Ab6, DS5_Eb5, AS5_Bb5,
     GS6_Ab6, DS5_Eb5, B5,      CS6_Db6, AS5_Bb5, B5,      GS5_Ab5, REST,
     REST};
-
-const uint32_t game_loop_times[] = {
+const uint32_t game_loop_times[768] = {
     417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417,
     417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 208, 208, 417, 417, 417,
     208, 208, 208, 208, 417, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
@@ -443,12 +442,31 @@ const uint32_t game_loop_times[] = {
     104, 208, 104, 208, 417, 208, 208, 312, 312, 625, 208, 208, 208, 104, 208,
     104, 208, 417, 208, 208, 312, 312, 208, 208, 208, 208, 312, 312, 312, 312,
     208, 208, 104};
+const uint32_t game_loop_note_count = 768;
 
-const uint32_t game_loop_note_count = 677;
+const uint32_t game_win_notes_ch1[4] = {C3, E3, G3, C4};
+const uint32_t game_win_times_ch1[4] = {200, 200, 200, 200};
+const uint32_t game_win_note_count_ch1 = 0;
 
-const uint32_t game_win_notes_ch1[];
-const uint32_t game_win_times_ch1[];
-const uint32_t game_win_note_count_ch1;
+const uint32_t game_win_notes_ch2[4] = {C5, E5, G5, C6};
+const uint32_t game_win_times_ch2[4] = {200, 200, 200, 200};
+const uint32_t game_win_note_count_ch2 = 0;
+
+const uint32_t game_lose_notes_ch1[4] = {C4, B3, AS3_Bb3, A3};
+const uint32_t game_lose_times_ch1[4] = {200, 200, 200, 200};
+const uint32_t game_lose_note_count_ch1 = 4;
+
+const uint32_t game_lose_notes_ch2[4] = {C6, B5, AS5_Bb5, A5};
+const uint32_t game_lose_times_ch2[4] = {200, 200, 200, 200};
+const uint32_t game_lose_note_count_ch2 = 4;
+
+const uint32_t lose_life_notes[2] = {FS2_Gb2, FS2_Gb2};
+const uint32_t lose_life_times[2] = {160, 160};
+const uint32_t lose_life_note_count = 2;
+
+const uint32_t aliens_spawning_notes[1] = {G6, G6, G6};
+const uint32_t aliens_spawning_times[1] = {220, 220, 220};
+const uint32_t aliens_spawning_note_count = 3;
 
 /* --- Runtime game globals ------------------------------------------------- */
 static uint32_t lastUpdate = 0;
