@@ -11,7 +11,11 @@
 #include "display.h"
 #include "musical_notes.h"
 #include "serial.h"
-#include "sound_effects.h"
+#include "platform.h"
+#include "sound_setup.h"
+#include "sound_data.h"
+#include "sound_engine.h"
+
 
 /*----GAME
  * FUNCTIONALITY------------------------------------------______---------------------*/
@@ -195,29 +199,6 @@ typedef enum { EASY, MEDIUM, HARD } GameMode;
 /*
  * FUNCTION PROTOTYPES
  */
-
-/* --- Sound / timing / interrupts ----------------------------------------- */
-void start_sound_effect_ch1(const uint32_t notes[],
-                            const uint32_t times[],
-                            uint32_t count,
-                            uint32_t repeat);
-void start_sound_effect_ch2(const uint32_t notes[],
-                            const uint32_t times[],
-                            uint32_t count,
-                            uint32_t repeat);
-void SysTick_Handler(void);
-static void stop_sound_effect_ch1(void);
-static void stop_sound_effect_ch2(void);
-
-/* --- Hardware setup ------------------------------------------------------- */
-void pinMode(GPIO_TypeDef* port, uint32_t pin, uint32_t mode);
-static void enablePullUp(GPIO_TypeDef* port, uint32_t pin);
-static void initClock(void);
-static void initSysTick(void);
-static void setupIO(void);
-
-/* --- Utility / timing / random ------------------------------------------- */
-void delay(volatile uint32_t ms);
 uint32_t xorshift32(void);
 static uint8_t shouldFire(uint8_t threshold);
 static uint32_t randomFireDelay(void);
@@ -300,196 +281,6 @@ static void printAscii(void);
 /*
  * GLOBAL DECLARATIONS
  */
-
-/* --- Sound engine state
-   --------------------------------------------------- */
-volatile const uint32_t* channel1_notes = 0;
-volatile const uint32_t* channel1_times = 0;
-volatile uint32_t channel1_note_count = 0;
-volatile uint32_t channel1_repeat = 0;
-volatile uint32_t channel1_note_index = 0;
-volatile int32_t channel1_note_timer = 0;
-volatile uint32_t milliseconds = 0;
-
-volatile const uint32_t* channel2_notes = 0;
-volatile const uint32_t* channel2_times = 0;
-volatile uint32_t channel2_note_count = 0;
-volatile uint32_t channel2_repeat = 0;
-volatile uint32_t channel2_note_index = 0;
-volatile int32_t channel2_note_timer = 0;
-
-/* --- Sound effect data ---------------------------------------------------- */
-const uint32_t shoot_notes[3] = {D5, D4, D5};
-const uint32_t shoot_times[3] = {80, 100, 80};
-const uint32_t shoot_note_count = 3;
-
-const uint32_t explode_notes[11] = {F4, D4, C4, A3, F3, D3, C3, A2, F2, D2, C2};
-const uint32_t explode_times[11] = {20, 20, 25, 25, 30, 35, 35, 40, 40, 45, 55};
-const uint32_t explode_note_count = 11;
-
-const uint32_t enter_game_notes_ch1[3] = {C3, D3, G3};
-const uint32_t enter_game_times_ch1[3] = {150, 150, 150};
-const uint32_t enter_game_note_count_ch1 = 3;
-
-const uint32_t enter_game_notes_ch2[3] = {C6, D6, G6};
-const uint32_t enter_game_times_ch2[3] = {150, 150, 150};
-const uint32_t enter_game_note_count_ch2 = 3;
-
-const uint32_t game_loop_notes[768] = {
-    REST,    G5,      A5,      AS5_Bb5, A5,      F5,      A5,      G5,
-    REST,    G5,      A5,      AS5_Bb5, C6,      AS5_Bb5, A5,      G5,
-    REST,    G5,      A5,      AS5_Bb5, A5,      F5,      A5,      G5,
-    D6,      REST,    C6,      REST,    AS5_Bb5, A5,      AS5_Bb5, C6,
-    F6,      REST,    REST,    G5,      D5,      D6,      D5,      C6,
-    D5,      AS5_Bb5, D5,      A5,      D5,      AS5_Bb5, D5,      A5,
-    D5,      G5,      D5,      A5,      D5,      AS5_Bb5, D5,      C6,
-    D5,      AS5_Bb5, D5,      A5,      D5,      F5,      D5,      A5,
-    D5,      G5,      D5,      G5,      D5,      D6,      D5,      C6,
-    D5,      AS5_Bb5, D5,      A5,      D5,      AS5_Bb5, D5,      A5,
-    D5,      AS5_Bb5, D5,      A5,      D5,      AS5_Bb5, D5,      C6,
-    D5,      AS5_Bb5, D5,      A5,      D5,      F5,      D5,      A5,
-    D5,      G5,      D5,      G5,      D5,      D6,      D5,      C6,
-    D5,      AS5_Bb5, D5,      A5,      D5,      AS5_Bb5, D5,      A5,
-    D5,      G5,      D5,      A5,      D5,      AS5_Bb5, D5,      C6,
-    D5,      AS5_Bb5, D5,      A5,      D5,      F5,      D5,      A5,
-    D5,      G5,      D5,      AS5_Bb5, D5,      D6,      D5,      C6,
-    D5,      AS5_Bb5, D5,      A5,      D5,      AS5_Bb5, D5,      A5,
-    D5,      G5,      D5,      A5,      D5,      AS5_Bb5, D5,      C6,
-    D5,      AS5_Bb5, D5,      A5,      D5,      F5,      D5,      A5,
-    D5,      G5,      D5,      C6,      C6,      F6,      D6,      REST,
-    REST,    REST,    C6,      AS5_Bb5, C6,      F6,      D6,      C6,
-    AS5_Bb5, C6,      F6,      D6,      REST,    REST,    REST,    C6,
-    D6,      DS6_Eb6, F6,      D6,      REST,    DS6_Eb6, REST,    C6,
-    F6,      D6,      REST,    REST,    REST,    C6,      AS5_Bb5, C6,
-    F6,      D6,      C6,      AS5_Bb5, C6,      F6,      D6,      REST,
-    REST,    REST,    C6,      D6,      DS6_Eb6, F6,      D5,      FS5_Gb5,
-    F5,      A5,      A5,      G5,      A5,      G5,      A5,      G5,
-    AS5_Bb5, A5,      G5,      F5,      A5,      G5,      D5,      A5,
-    G5,      D5,      A5,      G5,      D5,      AS5_Bb5, C6,      A5,
-    AS5_Bb5, G5,      D5,      D6,      D5,      C6,      D5,      AS5_Bb5,
-    D5,      A5,      D5,      AS5_Bb5, D5,      A5,      D5,      G5,
-    D5,      A5,      D5,      AS5_Bb5, D5,      C6,      D5,      AS5_Bb5,
-    D5,      A5,      D5,      F5,      D5,      A5,      D5,      G5,
-    D5,      G5,      D5,      D6,      D5,      C6,      D5,      AS5_Bb5,
-    D5,      A5,      D5,      AS5_Bb5, D5,      A5,      D5,      AS5_Bb5,
-    D5,      A5,      D5,      AS5_Bb5, D5,      C6,      D5,      AS5_Bb5,
-    D5,      A5,      D5,      F5,      D5,      A5,      D5,      G5,
-    D5,      G5,      D5,      D6,      D5,      C6,      D5,      AS5_Bb5,
-    D5,      A5,      D5,      AS5_Bb5, D5,      A5,      D5,      G5,
-    D5,      A5,      D5,      AS5_Bb5, D5,      C6,      D5,      AS5_Bb5,
-    D5,      A5,      D5,      F5,      D5,      A5,      D5,      G5,
-    D5,      AS5_Bb5, D5,      D6,      D5,      C6,      D5,      AS5_Bb5,
-    D5,      A5,      D5,      AS5_Bb5, D5,      A5,      D5,      G5,
-    D5,      A5,      D5,      AS5_Bb5, D5,      C6,      D5,      AS5_Bb5,
-    D5,      A5,      D5,      F5,      D5,      A5,      D5,      G5,
-    D5,      C6,      C6,      F6,      D6,      REST,    REST,    REST,
-    C5,      REST,    A4,      AS4_Bb4, C5,      D6,      G4,      AS4_Bb4,
-    G4,      C5,      G4,      D6,      G4,      C6,      F4,      A4,
-    F4,      F5,      F4,      D6,      DS4_Eb4, D6,      REST,    E4,
-    F4,      GS4_Ab4, REST,    AS4_Bb4, REST,    DS5_Eb5, GS4_Ab4, B4,
-    GS4_Ab4, CS5_Db5, GS4_Ab4, DS5_Eb5, GS4_Ab4, CS5_Db5, FS4_Gb4, AS4_Bb4,
-    FS4_Gb4, FS5_Gb5, FS4_Gb4, DS5_Eb5, E5,      D5,      REST,    CS5_Db5,
-    REST,    AS4_Bb4, B4,      CS5_Db5, DS5_Eb5, GS4_Ab4, B4,      GS4_Ab4,
-    CS5_Db5, GS4_Ab4, DS5_Eb5, GS4_Ab4, CS5_Db5, FS4_Gb4, AS4_Bb4, FS4_Gb4,
-    FS5_Gb5, FS4_Gb4, DS5_Eb5, E5,      DS5_Eb5, REST,    DS5_Eb5, E5,
-    FS5_Gb5, CS5_Db5, E5,      CS4_Db4, DS5_Eb5, E5,      G5,      AS5_Bb5,
-    GS5_Ab5, DS5_Eb5, DS6_Eb6, DS5_Eb5, CS6_Db6, DS5_Eb5, B5,      DS5_Eb5,
-    AS5_Bb5, DS5_Eb5, B5,      DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5,
-    AS5_Bb5, DS5_Eb5, B5,      DS5_Eb5, CS6_Db6, DS5_Eb5, B5,      DS5_Eb5,
-    AS5_Bb5, DS5_Eb5, FS5_Gb5, DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5,
-    GS5_Ab5, DS5_Eb5, DS6_Eb6, DS5_Eb5, CS6_Db6, DS5_Eb5, B5,      DS5_Eb5,
-    AS5_Bb5, DS5_Eb5, B5,      DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5,
-    AS5_Bb5, DS5_Eb5, B5,      DS5_Eb5, CS6_Db6, DS5_Eb5, B5,      DS5_Eb5,
-    AS5_Bb5, DS5_Eb5, FS5_Gb5, DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5,
-    GS5_Ab5, DS5_Eb5, DS6_Eb6, DS5_Eb5, CS6_Db6, DS5_Eb5, B5,      DS5_Eb5,
-    AS5_Bb5, DS5_Eb5, B5,      DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5,
-    AS5_Bb5, DS5_Eb5, B5,      DS5_Eb5, CS6_Db6, DS5_Eb5, B5,      DS5_Eb5,
-    AS5_Bb5, DS5_Eb5, FS5_Gb5, DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5,
-    GS5_Ab5, DS5_Eb5, DS6_Eb6, DS5_Eb5, CS6_Db6, DS5_Eb5, B5,      DS5_Eb5,
-    AS5_Bb5, DS5_Eb5, B5,      DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5,
-    AS5_Bb5, DS5_Eb5, B5,      DS5_Eb5, CS6_Db6, DS5_Eb5, B5,      DS5_Eb5,
-    AS5_Bb5, DS5_Eb5, FS5_Gb5, DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5,
-    CS6_Db6, FS6_Gb6, DS6_Eb6, REST,    REST,    REST,    CS6_Db6, B5,
-    CS6_Db6, FS6_Gb6, DS6_Eb6, CS6_Db6, B5,      CS6_Db6, FS6_Gb6, DS6_Eb6,
-    REST,    REST,    REST,    CS6_Db6, B5,      E6,      F6,      DS6_Eb6,
-    REST,    E6,      REST,    REST,    CS6_Db6, FS6_Gb6, DS6_Eb6, REST,
-    REST,    REST,    CS6_Db6, B5,      CS6_Db6, FS6_Gb6, DS6_Eb6, CS6_Db6,
-    B5,      CS6_Db6, FS6_Gb6, DS6_Eb6, REST,    REST,    REST,    CS5_Db5,
-    DS5_Eb5, E5,      F5,      DS5_Eb5, G5,      GS5_Ab5, AS5_Bb5, AS5_Bb5,
-    GS5_Ab5, AS5_Bb5, GS5_Ab5, AS5_Bb5, GS5_Ab5, B6,      AS5_Bb5, GS5_Ab5,
-    FS5_Gb5, AS5_Bb5, GS6_Ab6, DS5_Eb5, AS5_Bb5, GS6_Ab6, DS5_Eb5, AS5_Bb5,
-    GS6_Ab6, DS5_Eb5, B5,      CS6_Db6, AS5_Bb5, B5,      GS5_Ab5, REST,
-    REST};
-const uint32_t game_loop_times[768] = {
-    417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417,
-    417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 208, 208, 417, 417, 417,
-    208, 208, 208, 208, 417, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
-    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
-    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
-    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
-    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
-    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
-    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
-    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
-    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
-    208, 104, 208, 417, 104, 104, 312, 312, 625, 208, 208, 208, 104, 208, 104,
-    208, 417, 208, 208, 312, 312, 312, 104, 208, 208, 208, 104, 208, 104, 208,
-    417, 208, 208, 312, 312, 625, 208, 208, 208, 104, 208, 104, 208, 417, 208,
-    208, 312, 312, 208, 208, 208, 208, 312, 625, 312, 625, 312, 625, 208, 208,
-    208, 208, 312, 312, 208, 312, 312, 208, 312, 312, 208, 417, 417, 417, 417,
-    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
-    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
-    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
-    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
-    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
-    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
-    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
-    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
-    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
-    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
-    104, 104, 208, 52,  52,  52,  52,  104, 104, 104, 104, 104, 104, 104, 104,
-    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
-    417, 417, 208, 208, 156, 156, 104, 104, 104, 104, 104, 104, 104, 104, 104,
-    104, 104, 104, 104, 104, 104, 104, 104, 104, 208, 104, 104, 208, 208, 208,
-    208, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
-    104, 104, 104, 417, 417, 208, 208, 156, 156, 104, 104, 104, 104, 104, 104,
-    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 417, 208, 104,
-    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
-    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
-    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
-    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
-    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
-    104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104,
-    104, 104, 104, 208, 104, 208, 104, 208, 417, 208, 208, 312, 312, 625, 208,
-    208, 208, 104, 208, 104, 208, 417, 208, 208, 312, 312, 312, 104, 104, 208,
-    104, 208, 104, 208, 417, 208, 208, 312, 312, 625, 208, 208, 208, 104, 208,
-    104, 208, 417, 208, 208, 312, 312, 208, 208, 208, 208, 312, 312, 312, 312,
-    208, 208, 104};
-const uint32_t game_loop_note_count = 768;
-
-const uint32_t game_win_notes_ch1[4] = {C3, E3, G3, C4};
-const uint32_t game_win_times_ch1[4] = {200, 200, 200, 200};
-const uint32_t game_win_note_count_ch1 = 4;
-
-const uint32_t game_win_notes_ch2[4] = {C5, E5, G5, C6};
-const uint32_t game_win_times_ch2[4] = {200, 200, 200, 200};
-const uint32_t game_win_note_count_ch2 = 4;
-
-const uint32_t game_lose_notes_ch1[4] = {C4, B3, AS3_Bb3, A3};
-const uint32_t game_lose_times_ch1[4] = {200, 200, 200, 200};
-const uint32_t game_lose_note_count_ch1 = 4;
-
-const uint32_t game_lose_notes_ch2[4] = {C6, B5, AS5_Bb5, A5};
-const uint32_t game_lose_times_ch2[4] = {200, 200, 200, 200};
-const uint32_t game_lose_note_count_ch2 = 4;
-
-const uint32_t lose_life_notes[2] = {FS2_Gb2, FS2_Gb2};
-const uint32_t lose_life_times[2] = {160, 160};
-const uint32_t lose_life_note_count = 2;
-
-const uint32_t aliens_spawning_notes[3] = {G6, B6, G6};
-const uint32_t aliens_spawning_times[3] = {220, 220, 220};
-const uint32_t aliens_spawning_note_count = 3;
 
 /* --- Runtime game globals ------------------------------------------------- */
 static uint32_t lastUpdate = 0;
@@ -706,208 +497,6 @@ int main(void) {
  * FUNCTION DEFINITIONS
  */
 
-/* --- Sound / timing / interrupts ----------------------------------------- */
-/*
-start_sound_effect_ch1 and ch2
-notes => array of musical notes defined in music.h
-times => delay between notes
-count => number of notes;
-repeat=> flag 0 - false and 1 - true;
-*/
-void start_sound_effect_ch1(const uint32_t notes[],
-                            const uint32_t times[],
-                            uint32_t count,
-                            uint32_t repeat) {
-  if (count == 0) {
-    return;
-  }
-
-  __disable_irq();
-  channel1_notes = notes;
-  channel1_times = times;
-  channel1_note_count = count;
-  channel1_repeat = repeat;
-  channel1_note_index = 0;
-  channel1_note_timer = channel1_times[0];
-
-  if (channel1_notes[0] == REST) {
-    stopSound();
-  } else {
-    playNote(channel1_notes[0]);
-  }
-  __enable_irq();
-}
-
-void start_sound_effect_ch2(const uint32_t notes[],
-                            const uint32_t times[],
-                            uint32_t count,
-                            uint32_t repeat) {
-  if (count == 0) {
-    return;
-  }
-
-  __disable_irq();
-  channel2_notes = notes;
-  channel2_times = times;
-  channel2_note_count = count;
-  channel2_repeat = repeat;
-  channel2_note_index = 0;
-  channel2_note_timer = channel2_times[0];
-
-  if (channel2_notes[0] == REST) {
-    stopSound2();
-  } else {
-    playNote2(channel2_notes[0]);
-  }
-  __enable_irq();
-}
-
-void SysTick_Handler(void) {
-  milliseconds++;
-
-  /* channel 1 */
-  if (channel1_notes != 0) {
-    if (channel1_note_timer > 0)
-      channel1_note_timer--;
-
-    if (channel1_note_timer == 0) {
-      channel1_note_index++;
-
-      if (channel1_note_index >= channel1_note_count) {
-        if (channel1_repeat == 0) {
-          channel1_notes = 0;
-          channel1_times = 0;
-          channel1_note_count = 0;
-          channel1_note_index = 0;
-          channel1_note_timer = 0;
-          stopSound();
-        } else {
-          channel1_note_index = 0;
-        }
-      }
-
-      if (channel1_notes != 0) {
-        channel1_note_timer = channel1_times[channel1_note_index];
-        if (channel1_notes[channel1_note_index] == REST) {
-          stopSound();
-        } else {
-          playNote(channel1_notes[channel1_note_index]);
-        }
-      }
-    }
-  }
-
-  /* channel 2 */
-  if (channel2_notes != 0) {
-    if (channel2_note_timer > 0)
-      channel2_note_timer--;
-
-    if (channel2_note_timer == 0) {
-      channel2_note_index++;
-
-      if (channel2_note_index >= channel2_note_count) {
-        if (channel2_repeat == 0) {
-          channel2_notes = 0;
-          channel2_times = 0;
-          channel2_note_count = 0;
-          channel2_repeat = 0;
-          channel2_note_index = 0;
-          channel2_note_timer = 0;
-          stopSound2();
-        } else {
-          channel2_note_index = 0;
-        }
-      }
-
-      if (channel2_notes != 0) {
-        channel2_note_timer = channel2_times[channel2_note_index];
-        if (channel2_notes[channel2_note_index] == REST) {
-          stopSound2();
-        } else {
-          playNote2(channel2_notes[channel2_note_index]);
-        }
-      }
-    }
-  }
-}
-
-static void stop_sound_effect_ch1(void) {
-  __disable_irq();
-  channel1_notes = 0;
-  channel1_times = 0;
-  channel1_note_count = 0;
-  channel1_repeat = 0;
-  channel1_note_index = 0;
-  channel1_note_timer = 0;
-  stopSound();
-  __enable_irq();
-}
-static void stop_sound_effect_ch2(void) {
-  __disable_irq();
-  channel2_notes = 0;
-  channel2_times = 0;
-  channel2_note_count = 0;
-  channel2_repeat = 0;
-  channel2_note_index = 0;
-  channel2_note_timer = 0;
-  stopSound2();
-  __enable_irq();
-}
-/* --- Hardware setup ------------------------------------------------------- */
-void pinMode(GPIO_TypeDef* port, uint32_t pin, uint32_t mode) {
-  uint32_t val = port->MODER;
-  val &= ~(3u << (pin * 2));
-  val |= (mode << (pin * 2));
-  port->MODER = val;
-}
-static void enablePullUp(GPIO_TypeDef* port, uint32_t pin) {
-  port->PUPDR &= ~(3u << (pin * 2));
-  port->PUPDR |= (1u << (pin * 2));
-}
-static void initClock(void) {
-  RCC->CR &= ~(1u << 24);
-  while (RCC->CR & (1 << 25))
-    ;
-
-  FLASH->ACR |= (1 << 0); /* 1 wait-state     */
-  FLASH->ACR &= ~((1u << 2) | (1u << 1));
-  FLASH->ACR |= (1 << 4); /* prefetch on      */
-
-  RCC->CFGR &= ~((1u << 21) | (1u << 20) | (1u << 19) |
-                 (1u << 18)); /* PLL x12 -> 48MHz */
-  RCC->CFGR |= ((1 << 21) | (1 << 19));
-  RCC->CFGR |= (1 << 14); /* ADC /4           */
-  RCC->CR |= (1 << 24);   /* PLL on           */
-  RCC->CFGR |= (1 << 1);  /* PLL as sysclk    */
-}
-static void initSysTick(void) {
-  SysTick->LOAD = 48000;
-  SysTick->CTRL = 7;
-  SysTick->VAL = 10;
-  __asm(" cpsie i ");
-}
-static void setupIO(void) {
-  RCC->AHBENR |= (1 << 18) | (1 << 17);
-  display_begin();
-  pinMode(GPIOB, 4, 0);
-  enablePullUp(GPIOB, 4); /* right - PB4  */
-  pinMode(GPIOB, 5, 0);
-  enablePullUp(GPIOB, 5); /* left  - PB5  */
-  pinMode(GPIOA, 8, 0);
-  enablePullUp(GPIOA, 8); /* fire  - PA8  */
-  pinMode(GPIOA, 11, 0);
-  enablePullUp(GPIOA, 11); /* down  - PA11 */
-  pinMode(GPIOA, 10, 1);   /* Lives indicator 1 - PA10*/
-  pinMode(GPIOA, 1, 1);    /* Lives indicator 1 - PA1*/
-  pinMode(GPIOB, 3, 1);    /* Lives indicator 1 - PB3*/
-  pinMode(GPIOA, 9, 0);    /* Reset Button */
-  enablePullUp(GPIOA, 9);
-}
-
-// static void lightLivesIndicator(int lives) {
-//   // Clear LEDs
-//   GPIOA->ODR &= ~((1 << 2) | (1 << 1));
-//   GPIOB->ODR &= ~(1 << 3);
 
 //   // temp
 //   // GPIOC->ODR |= (1 << 3);
@@ -918,27 +507,8 @@ static void setupIO(void) {
 //   GPIOA->ODR |= (lives == 3) ? (1 << 2) : 0;
 // }
 
-static void lightLivesIndicator(int lives) {
-  // Clear all LEDs
-  GPIOA->BSRR = (1 << (1 + 16));
-  GPIOA->BSRR = (1 << (10 + 16));
-  GPIOB->BSRR = (1 << (3 + 16));
-
-  // Set LEDs
-  if (lives >= 1)
-    GPIOA->BSRR = (1 << 1);
-  if (lives >= 2)
-    GPIOB->BSRR = (1 << 3);
-  if (lives >= 3)
-    GPIOA->BSRR = (1 << 10);
-}
 /* --- Utility / timing / random -------------------------------------------
  */
-void delay(volatile uint32_t ms) {
-  uint32_t end = ms + milliseconds;
-  while (milliseconds != end)
-    __asm(" wfi ");
-}
 uint32_t xorshift32() {
   randState ^= randState << 13;
   randState ^= randState >> 17;
@@ -1983,9 +1553,9 @@ static void moveMainAlien(MainAlien* ma) {
     if (now >= ma->nextSpawnTime) {
       ma->active = 1;
 
-      if (channel1_notes == 0) {  // only play if ch1 is free
-        start_sound_effect_ch1(aliens_spawning_notes, aliens_spawning_times,
-                               aliens_spawning_note_count, 0);
+      if (!sound_effect_ch1_busy()) 
+      {
+        start_sound_effect_ch1(aliens_spawning_notes, aliens_spawning_times,aliens_spawning_note_count, 0);
       }
 
       /* Random direction */

@@ -1,8 +1,9 @@
+#include "sound_setup.h"
+#include "platform.h"
+#include "musical_notes.h"
+
 #include <stdint.h>
 #include <stm32f031x6.h>
-#include "musical_notes.h"
-#include "display.h"
-void pinMode(GPIO_TypeDef *Port, uint32_t BitNumber, uint32_t Mode);
 
 void initSound(void)
 {
