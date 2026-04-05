@@ -32,6 +32,7 @@ void stopSound(void)
 {
     TIM14->CR1 &= ~TIM_CR1_CEN;  // disable timer
 }
+
 void initSound2(void)
 {
     RCC->APB1ENR |= (1 << 1); // TIM3 clock

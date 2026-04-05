@@ -1,6 +1,8 @@
+#include "serial.h"
+#include "platform.h"
+
 #include <stm32f031x6.h>
 
-void pinMode(GPIO_TypeDef *port, uint32_t pin, uint32_t mode);
 void initSerial()
 {
 	/* On the nucleo board, TX is on PA2 while RX is on PA15 */

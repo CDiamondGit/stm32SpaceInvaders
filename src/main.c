@@ -1,5 +1,7 @@
 /*
- * 1. INCLUDES & DEFINES
+ * ============================================================================
+ * 1. INCLUDES
+ * ============================================================================
  */
 
 #include <stdbool.h>
@@ -8,51 +10,52 @@
 #include <stdlib.h>
 #include <stm32f031x6.h>
 #include <time.h>
+
 #include "display.h"
 #include "musical_notes.h"
 #include "serial.h"
 #include "platform.h"
 #include "sound_setup.h"
-#include "sound_data.h"
 #include "sound_engine.h"
 
 
-/*----GAME
- * FUNCTIONALITY------------------------------------------______---------------------*/
+/*
+ * ============================================================================
+ * 2. MACROS
+ * ============================================================================
+ */
+
+/* --- Scoring / records --------------------------------------------------- */
 // score increase value in easy,medium and hard mode
 #define SCORE_INC_EASY 10
 #define SCORE_INC_MED 15
 #define SCORE_INC_HARD 20
 #define MAX_RECORDS 5
 
-/* --- Screen --------------------------------------------------------------- */
+/* --- Screen -------------------------------------------------------------- */
 #define SCREEN_W 128
 #define SCREEN_H 160
 
-/* --- Ship ----------------------------------------------------------------- */
+/* --- Player ship --------------------------------------------------------- */
 #define SHIP_W 12
 #define SHIP_H 12
 #define SHIP_MIN_X 2                        // min x pos for ship
 #define SHIP_MAX_X (SCREEN_W - SHIP_W - 2)  // max x pos for ship
 #define SHIP_SPEED 2
 
-/* --- Bullet --------------------------------------------------------------- */
+/* --- Projectiles --------------------------------------------------------- */
 #define BULLET_W 2
 #define BULLET_H 2
-#define BULLET_OFFSET_X \
-  6  // x offset from ship pos to keep bullet in nozzle of ship
-#define BULLET_OFFSET_Y \
-  13  // y offset from ship pos to keep bullet in nozzle of ship
+#define BULLET_OFFSET_X 6   // x offset from ship pos to keep bullet in nozzle of ship
+#define BULLET_OFFSET_Y 13  // y offset from ship pos to keep bullet in nozzle of ship
 #define BULLET_SPEED 4
 #define ALIEN_BULLET_SPEED 1
 #define BULLET_COLOR 65287
 #define ALIEN_BULLET_COLOR 57034
 
-/* --- Alien grid ----------------------------------------------------------- */
+/* --- Alien formation ----------------------------------------------------- */
 #define ALIEN_W 11
 #define ALIEN_H 8
-#define MAIN_ALIEN_W 22
-#define MAIN_ALIEN_H 16
 #define ALIEN_ROWS 3
 #define ALIEN_COLS 5
 #define ALIEN_GAP_X 11    /* horizontal gap between aliens          */
@@ -77,76 +80,76 @@
 #define ALIEN_MOVE_MS_EASY 1000
 #define ALIEN_MOVE_MS_MED 500
 #define ALIEN_MOVE_MS_HARD 200
-/* decrease speeds up alien and increase to slow down          */
+/* decrease speeds up alien and increase to slow down */
 
 /* Drop distance when hitting a wall (one alien row + gap) */
 #define ALIEN_DROP (ALIEN_H + ALIEN_GAP_Y)
 
-/*---- Main alien--------------------------------------------------------*/
-
-#define MAIN_ALIEN_Y 10
-#define MAIN_ALIEN_MIN_DELAY 3000
-#define MAIN_ALIEN_MAX_DELAY 6000
-#define MAIN_ALIEN_MOVE_DELAY 30  // movement speed (lower = faster)
-
-/* --- HUD ------------------------------------------------------------------ */
-#define HUD_LINE_Y 144
-#define HUD_LINE_COLOR 57351
-
+/* --- Enemy firing -------------------------------------------------------- */
 // alien fire delay bounds
 // randomly delays from min to max ms
 #define ALIEN_FIRE_MIN_MS 800
 #define ALIEN_FIRE_MAX_MS 3000
 
-/* --- Respawn  ------------------------------------------------------------- */
+/* --- Main alien ---------------------------------------------------------- */
+#define MAIN_ALIEN_W 22
+#define MAIN_ALIEN_H 16
+#define MAIN_ALIEN_Y 10
+#define MAIN_ALIEN_MIN_DELAY 3000
+#define MAIN_ALIEN_MAX_DELAY 6000
+#define MAIN_ALIEN_MOVE_DELAY 30  // movement speed (lower = faster)
+
+/* --- HUD ----------------------------------------------------------------- */
+#define HUD_LINE_Y 144
+#define HUD_LINE_COLOR 57351
+
+/* --- Respawn system ------------------------------------------------------ */
 #define ALIEN_RESPAWN_FLASH_MS 200
 #define ALIEN_RESPAWN_MIN 4
 #define ALIEN_RESPAWN_MAX 12
 
-/* --- Loading Bar -----------------------------------------------------------
- */
+/* --- Splash screen / background visuals ---------------------------------- */
 #define LBAR_X 10
 #define LBAR_Y 100
 #define LBAR_W 108
 #define LBAR_H 15
-
 #define LBAR_BACKGROUND 57351  // black (background)
 #define LBAR_FILL 57351        // green
-
 #define STAR_RED 63680
 #define STAR_BLUE 1119
 #define STAR_WHITE 65535
 
 /*
- * TYPE DECLARATIONS
+ * ============================================================================
+ * 3. TYPE DECLARATIONS
+ * ============================================================================
  */
 
-/* --- Bullet / game object types ------------------------------------------ */
-typedef enum { BULLET_READY, BULLET_FIRE } BulletState;
-
+/* --- Core gameplay types ------------------------------------------------- */
+typedef enum { 
+  BULLET_READY, BULLET_FIRE 
+} BulletState;
 typedef struct {
   uint16_t x, y;
   uint16_t oldX, oldY;
 } Transform;
-
 typedef struct {
   Transform coords;
   uint16_t speed;
 } Ship;
-
 typedef struct {
   Transform coords;
   BulletState state;
   uint16_t speed;
 } Bullet;
 
+/* --- Score / record types ------------------------------------------------ */
 typedef struct {
   char initials[4]; /* 3 letters + null terminator */
   uint32_t score;
 } ScoreRecord;
 
-/* --- Alien formation ------------------------------------------------------ */
-
+/* --- Enemy / alien types ------------------------------------------------- */
 typedef struct {
   Transform coords;
   uint16_t speed;
@@ -155,7 +158,6 @@ typedef struct {
   uint32_t nextSpawnTime;  // when to appear
   uint32_t lastMoveTime;   // movement timing
 } MainAlien;
-
 typedef struct {
   int16_t offsetX, offsetY;       /* current grid offset from base positions */
   int16_t oldOffsetX, oldOffsetY; /* previous offset for dirty-rect erase */
@@ -177,7 +179,7 @@ typedef struct {
   uint32_t respawnTimer;  /* timestamp driving each respawn animation step */
 } AlienGrid;
 
-/* --- Whole game state ----------------------------------------------------- */
+/* --- Whole game state ---------------------------------------------------- */
 typedef struct {
   Ship ship;
   Bullet bullet;
@@ -190,36 +192,43 @@ typedef struct {
   MainAlien mysteryAlien;
 } GameState;
 
-/* --- App / gameplay states ------------------------------------------------ */
+/* --- App / gameplay state types ------------------------------------------ */
 typedef enum { MAINMENU, PLAYING, HELP, RECORD, MODE } AppState;
-
 typedef enum { GAMERUNNING, PAUSE, GAMEOVER } PlayingState;
 typedef enum { EASY, MEDIUM, HARD } GameMode;
 
 /*
- * FUNCTION PROTOTYPES
+ * ============================================================================
+ * 4. FUNCTION PROTOTYPES
+ * ============================================================================
  */
+
+/* --- Random / utility helpers -------------------------------------------- */
 uint32_t xorshift32(void);
 static uint8_t shouldFire(uint8_t threshold);
 static uint32_t randomFireDelay(void);
 static uint32_t randomMainAlienDelay(void);
 uint8_t get_random_bit(uint32_t* state);
-int isInside(uint16_t x1,
-             uint16_t y1,
-             uint16_t w,
-             uint16_t h,
-             uint16_t px,
-             uint16_t py);
+int isInside(uint16_t x1, uint16_t y1, uint16_t w, uint16_t h, uint16_t px, uint16_t py);
 
 /* --- Background / screen helpers ----------------------------------------- */
 void loadBackground(void);
 void clearDisplay(void);
+static void splashScreen(void);
+static void makeBackground(int starCount);
+static void printAscii(void);
 
-/* --- Game initialisation -------------------------------------------------- */
+/* --- Game initialisation / reset ----------------------------------------- */
 static void parkAlienBullet(int col);
 static void initAlienGrid(void);
 static void initGameState(void);
 static void resetGame(void);
+
+/* --- Alien respawn system ------------------------------------------------ */
+static void buildRandomAlienPattern(void);
+static void startAlienRespawn(void);
+static void applyAlienRespawnPattern(void);
+static void updateAlienRespawn(uint32_t now);
 
 /* --- Menu / app state screens -------------------------------------------- */
 void mainMenu(AppState* as);
@@ -229,8 +238,7 @@ void playing(AppState* as);
 void showScoreBoard(AppState* as);
 void selectMode(AppState* as, GameMode* gm);
 
-/* --- Input
-   ---------------------------------------------------------------- */
+/* --- Input handling ------------------------------------------------------ */
 static void handleInput(PlayingState* ps, AppState* as);
 
 /* --- Alien movement / firing --------------------------------------------- */
@@ -241,48 +249,31 @@ static void updateAlienFire(uint32_t now);
 static void moveMainAlien(MainAlien* ma);
 
 /* --- Collision / bullet state -------------------------------------------- */
-static int checkCollision(uint16_t o1X,
-                          uint16_t o1Y,
-                          uint16_t o1w,
-                          uint16_t o1h,
-                          uint16_t o2X,
-                          uint16_t o2Y,
-                          uint16_t o2w,
-                          uint16_t o2h);
+static int checkCollision(uint16_t o1X, uint16_t o1Y, uint16_t o1w, uint16_t o1h, uint16_t o2X, uint16_t o2Y, uint16_t o2w, uint16_t o2h);
 static void resetAlienBullet(int col);
 static void resetPlayerBullet(void);
-static void repairAliensUnderRect(uint16_t rx,
-                                  uint16_t ry,
-                                  uint16_t rw,
-                                  uint16_t rh);
+static void repairAliensUnderRect(uint16_t rx, uint16_t ry, uint16_t rw, uint16_t rh);
 static int updateAlienBulletCollision(void);
 static void updatePlayerCollision(void);
 static int checkGameOver(void);
 static void updateMainAlienBulletCollision(void);
 
-/* --- Rendering ------------------------------------------------------------ */
+/* --- Rendering ----------------------------------------------------------- */
 static void renderAliens(void);
 static void renderShip(void);
 static void renderPlayerBullet(void);
 static void renderAlienBullets(void);
-static void renderBarricade(void);
 static void renderScene(void);
 static void renderStats(void);
 static void renderGameOverScreen(PlayingState* ps, AppState* as);
-static void splashScreen();
-static void makeBackground(int starCount);
-static void buildRandomAlienPattern(void);
-static void startAlienRespawn(void);
-static void applyAlienRespawnPattern(void);
-static void updateAlienRespawn(uint32_t now);
-
-static void printAscii(void);
 
 /*
- * GLOBAL DECLARATIONS
+ * ============================================================================
+ * 5. GLOBAL DECLARATIONS
+ * ============================================================================
  */
 
-/* --- Runtime game globals ------------------------------------------------- */
+/* --- Timing / frame control ----------------------------------------------- */
 static uint32_t lastUpdate = 0;
 static const uint32_t FRAME_DELAY = 16;  // 1000ms / 16 ms ~ 60 fps
 // decrease to increase fps
@@ -292,18 +283,66 @@ static const uint32_t FRAME_DELAY = 16;  // 1000ms / 16 ms ~ 60 fps
 // between current and last updated time is less than FRAME_DELAY halt
 // everything
 
+/* --- App / mode state ----------------------------------------------------- */
 AppState currentAppState = MAINMENU;
 GameMode currentGameMode = EASY;
 
+/* --- Core game state ------------------------------------------------------ */
 static GameState gs;
 static uint32_t randState;
 
-static ScoreRecord records[MAX_RECORDS] = {
-    {"___", 0000}, {"___", 0000}, {"___", 0000}, {"___", 0000}, {"___", 0000},
-};
+/* --- High score records --------------------------------------------------- */
+static ScoreRecord records[MAX_RECORDS] = {{"___", 0000}, {"___", 0000}, {"___", 0000}, {"___", 0000}, {"___", 0000},};
+
+/* --- Sound Effects -------------------------------------------------------- */
+const uint32_t shoot_notes[3] = {D5, D4, D5};
+const uint32_t shoot_times[3] = {80, 100, 80};
+const uint32_t shoot_note_count = 3;
+
+const uint32_t explode_notes[11] = {F4, D4, C4, A3, F3, D3, C3, A2, F2, D2, C2};
+const uint32_t explode_times[11] = {20, 20, 25, 25, 30, 35, 35, 40, 40, 45, 55};
+const uint32_t explode_note_count = 11;
+
+const uint32_t enter_game_notes_ch1[3] = {C3, D3, G3};
+const uint32_t enter_game_times_ch1[3] = {150, 150, 150};
+const uint32_t enter_game_note_count_ch1 = 3;
+
+const uint32_t enter_game_notes_ch2[3] = {C6, D6, G6};
+const uint32_t enter_game_times_ch2[3] = {150, 150, 150};
+const uint32_t enter_game_note_count_ch2 = 3;
+
+const uint32_t game_loop_notes[768] = { REST,G5,  A5,  AS5_Bb5, A5,  F5,  A5,  G5, REST,G5,  A5,  AS5_Bb5, C6,  AS5_Bb5, A5,  G5, REST,G5,  A5,  AS5_Bb5, A5,  F5,  A5,  G5, D6,  REST,C6,  REST,AS5_Bb5, A5,  AS5_Bb5, C6, F6,  REST,REST,G5,  D5,  D6,  D5,  C6, D5,  AS5_Bb5, D5,  A5,  D5,  AS5_Bb5, D5,  A5, D5,  G5,  D5,  A5,  D5,  AS5_Bb5, D5,  C6, D5,  AS5_Bb5, D5,  A5,  D5,  F5,  D5,  A5, D5,  G5,  D5,  G5,  D5,  D6,  D5,  C6, D5,  AS5_Bb5, D5,  A5,  D5,  AS5_Bb5, D5,  A5, D5,  AS5_Bb5, D5,  A5,  D5,  AS5_Bb5, D5,  C6, D5,  AS5_Bb5, D5,  A5,  D5,  F5,  D5,  A5, D5,  G5,  D5,  G5,  D5,  D6,  D5,  C6, D5,  AS5_Bb5, D5,  A5,  D5,  AS5_Bb5, D5,  A5, D5,  G5,  D5,  A5,  D5,  AS5_Bb5, D5,  C6, D5,  AS5_Bb5, D5,  A5,  D5,  F5,  D5,  A5, D5,  G5,  D5,  AS5_Bb5, D5,  D6,  D5,  C6, D5,  AS5_Bb5, D5,  A5,  D5,  AS5_Bb5, D5,  A5, D5,  G5,  D5,  A5,  D5,  AS5_Bb5, D5,  C6, D5,  AS5_Bb5, D5,  A5,  D5,  F5,  D5,  A5, D5,  G5,  D5,  C6,  C6,  F6,  D6,  REST, REST,REST,C6,  AS5_Bb5, C6,  F6,  D6,  C6, AS5_Bb5, C6,  F6,  D6,  REST,REST,REST,C6, D6,  DS6_Eb6, F6,  D6,  REST,DS6_Eb6, REST,C6, F6,  D6,  REST,REST,REST,C6,  AS5_Bb5, C6, F6,  D6,  C6,  AS5_Bb5, C6,  F6,  D6,  REST, REST,REST,C6,  D6,  DS6_Eb6, F6,  D5,  FS5_Gb5, F5,  A5,  A5,  G5,  A5,  G5,  A5,  G5, AS5_Bb5, A5,  G5,  F5,  A5,  G5,  D5,  A5, G5,  D5,  A5,  G5,  D5,  AS5_Bb5, C6,  A5, AS5_Bb5, G5,  D5,  D6,  D5,  C6,  D5,  AS5_Bb5, D5,  A5,  D5,  AS5_Bb5, D5,  A5,  D5,  G5, D5,  A5,  D5,  AS5_Bb5, D5,  C6,  D5,  AS5_Bb5, D5,  A5,  D5,  F5,  D5,  A5,  D5,  G5, D5,  G5,  D5,  D6,  D5,  C6,  D5,  AS5_Bb5, D5,  A5,  D5,  AS5_Bb5, D5,  A5,  D5,  AS5_Bb5, D5,  A5,  D5,  AS5_Bb5, D5,  C6,  D5,  AS5_Bb5, D5,  A5,  D5,  F5,  D5,  A5,  D5,  G5, D5,  G5,  D5,  D6,  D5,  C6,  D5,  AS5_Bb5, D5,  A5,  D5,  AS5_Bb5, D5,  A5,  D5,  G5, D5,  A5,  D5,  AS5_Bb5, D5,  C6,  D5,  AS5_Bb5, D5,  A5,  D5,  F5,  D5,  A5,  D5,  G5, D5,  AS5_Bb5, D5,  D6,  D5,  C6,  D5,  AS5_Bb5, D5,  A5,  D5,  AS5_Bb5, D5,  A5,  D5,  G5, D5,  A5,  D5,  AS5_Bb5, D5,  C6,  D5,  AS5_Bb5, D5,  A5,  D5,  F5,  D5,  A5,  D5,  G5, D5,  C6,  C6,  F6,  D6,  REST,REST,REST, C5,  REST,A4,  AS4_Bb4, C5,  D6,  G4,  AS4_Bb4, G4,  C5,  G4,  D6,  G4,  C6,  F4,  A4, F4,  F5,  F4,  D6,  DS4_Eb4, D6,  REST,E4, F4,  GS4_Ab4, REST,AS4_Bb4, REST,DS5_Eb5, GS4_Ab4, B4, GS4_Ab4, CS5_Db5, GS4_Ab4, DS5_Eb5, GS4_Ab4, CS5_Db5, FS4_Gb4, AS4_Bb4, FS4_Gb4, FS5_Gb5, FS4_Gb4, DS5_Eb5, E5,  D5,  REST,CS5_Db5, REST,AS4_Bb4, B4,  CS5_Db5, DS5_Eb5, GS4_Ab4, B4,  GS4_Ab4, CS5_Db5, GS4_Ab4, DS5_Eb5, GS4_Ab4, CS5_Db5, FS4_Gb4, AS4_Bb4, FS4_Gb4, FS5_Gb5, FS4_Gb4, DS5_Eb5, E5,  DS5_Eb5, REST,DS5_Eb5, E5, FS5_Gb5, CS5_Db5, E5,  CS4_Db4, DS5_Eb5, E5,  G5,  AS5_Bb5, GS5_Ab5, DS5_Eb5, DS6_Eb6, DS5_Eb5, CS6_Db6, DS5_Eb5, B5,  DS5_Eb5, AS5_Bb5, DS5_Eb5, B5,  DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5, AS5_Bb5, DS5_Eb5, B5,  DS5_Eb5, CS6_Db6, DS5_Eb5, B5,  DS5_Eb5, AS5_Bb5, DS5_Eb5, FS5_Gb5, DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5, GS5_Ab5, DS5_Eb5, DS6_Eb6, DS5_Eb5, CS6_Db6, DS5_Eb5, B5,  DS5_Eb5, AS5_Bb5, DS5_Eb5, B5,  DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5, AS5_Bb5, DS5_Eb5, B5,  DS5_Eb5, CS6_Db6, DS5_Eb5, B5,  DS5_Eb5, AS5_Bb5, DS5_Eb5, FS5_Gb5, DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5, GS5_Ab5, DS5_Eb5, DS6_Eb6, DS5_Eb5, CS6_Db6, DS5_Eb5, B5,  DS5_Eb5, AS5_Bb5, DS5_Eb5, B5,  DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5, AS5_Bb5, DS5_Eb5, B5,  DS5_Eb5, CS6_Db6, DS5_Eb5, B5,  DS5_Eb5, AS5_Bb5, DS5_Eb5, FS5_Gb5, DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5, GS5_Ab5, DS5_Eb5, DS6_Eb6, DS5_Eb5, CS6_Db6, DS5_Eb5, B5,  DS5_Eb5, AS5_Bb5, DS5_Eb5, B5,  DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5, AS5_Bb5, DS5_Eb5, B5,  DS5_Eb5, CS6_Db6, DS5_Eb5, B5,  DS5_Eb5, AS5_Bb5, DS5_Eb5, FS5_Gb5, DS5_Eb5, AS5_Bb5, DS5_Eb5, GS5_Ab5, DS5_Eb5, CS6_Db6, FS6_Gb6, DS6_Eb6, REST,REST,REST,CS6_Db6, B5, CS6_Db6, FS6_Gb6, DS6_Eb6, CS6_Db6, B5,  CS6_Db6, FS6_Gb6, DS6_Eb6, REST,REST,REST,CS6_Db6, B5,  E6,  F6,  DS6_Eb6, REST,E6,  REST,REST,CS6_Db6, FS6_Gb6, DS6_Eb6, REST, REST,REST,CS6_Db6, B5,  CS6_Db6, FS6_Gb6, DS6_Eb6, CS6_Db6, B5,  CS6_Db6, FS6_Gb6, DS6_Eb6, REST,REST,REST,CS5_Db5, DS5_Eb5, E5,  F5,  DS5_Eb5, G5,  GS5_Ab5, AS5_Bb5, AS5_Bb5, GS5_Ab5, AS5_Bb5, GS5_Ab5, AS5_Bb5, GS5_Ab5, B6,  AS5_Bb5, GS5_Ab5, FS5_Gb5, AS5_Bb5, GS6_Ab6, DS5_Eb5, AS5_Bb5, GS6_Ab6, DS5_Eb5, AS5_Bb5, GS6_Ab6, DS5_Eb5, B5,  CS6_Db6, AS5_Bb5, B5,  GS5_Ab5, REST, REST};
+const uint32_t game_loop_times[768] = { 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 208, 208, 417, 417, 417, 208, 208, 208, 208, 417, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 208, 104, 208, 417, 104, 104, 312, 312, 625, 208, 208, 208, 104, 208, 104, 208, 417, 208, 208, 312, 312, 312, 104, 208, 208, 208, 104, 208, 104, 208, 417, 208, 208, 312, 312, 625, 208, 208, 208, 104, 208, 104, 208, 417, 208, 208, 312, 312, 208, 208, 208, 208, 312, 625, 312, 625, 312, 625, 208, 208, 208, 208, 312, 312, 208, 312, 312, 208, 312, 312, 208, 417, 417, 417, 417, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 208, 52,  52,  52,  52,  104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 417, 417, 208, 208, 156, 156, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 208, 104, 104, 208, 208, 208, 208, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 417, 417, 208, 208, 156, 156, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 417, 208, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 208, 104, 208, 104, 208, 417, 208, 208, 312, 312, 625, 208, 208, 208, 104, 208, 104, 208, 417, 208, 208, 312, 312, 312, 104, 104, 208, 104, 208, 104, 208, 417, 208, 208, 312, 312, 625, 208, 208, 208, 104, 208, 104, 208, 417, 208, 208, 312, 312, 208, 208, 208, 208, 312, 312, 312, 312, 208, 208, 104};
+const uint32_t game_loop_note_count = 768;
+
+const uint32_t game_win_notes_ch1[4] = {C3, E3, G3, C4};
+const uint32_t game_win_times_ch1[4] = {200, 200, 200, 200};
+const uint32_t game_win_note_count_ch1 = 4;
+
+const uint32_t game_win_notes_ch2[4] = {C5, E5, G5, C6};
+const uint32_t game_win_times_ch2[4] = {200, 200, 200, 200};
+const uint32_t game_win_note_count_ch2 = 4;
+
+const uint32_t game_lose_notes_ch1[4] = {C4, B3, AS3_Bb3, A3};
+const uint32_t game_lose_times_ch1[4] = {200, 200, 200, 200};
+const uint32_t game_lose_note_count_ch1 = 4;
+
+const uint32_t game_lose_notes_ch2[4] = {C6, B5, AS5_Bb5, A5};
+const uint32_t game_lose_times_ch2[4] = {200, 200, 200, 200};
+const uint32_t game_lose_note_count_ch2 = 4;
+
+const uint32_t lose_life_notes[2] = {FS2_Gb2, FS2_Gb2};
+const uint32_t lose_life_times[2] = {160, 160};
+const uint32_t lose_life_note_count = 2;
+
+const uint32_t aliens_spawning_notes[3] = {G6, B6, G6};
+const uint32_t aliens_spawning_times[3] = {220, 220, 220};
+const uint32_t aliens_spawning_note_count = 3;
 
 /*
- * ASSET DECLARATIONS
+ * ============================================================================
+ * 6. ASSET DECLARATIONS
+ * ============================================================================
  */
 
 static const uint16_t spaceShip[] = {
@@ -323,7 +362,6 @@ static const uint16_t spaceShip[] = {
     0,     0,     0,     0,     0,     45196, 21933, 0,     0,     0,     0,
     0,
 };
-
 static const uint16_t blueAlienBoth[][88] = {
     {0,     0,     41187, 0,     0,     0,     0,     0,     41187, 0,
      0,     41187, 0,     0,     41187, 0,     0,     0,     41187, 0,
@@ -397,7 +435,6 @@ static const uint16_t explosion[88] = {
     0,    15139, 15139, 21809, 15139, 15139, 7013,  7013,  21809, 11313, 0,
     0,    0,     0,     7013,  61747, 7013,  32158, 64354, 11313, 0,     0,
     0,    0,     0,     53562, 1073,  21809, 61747, 2105,  0,     0,     0};
-
 static const uint16_t mainAlienSpr[352] = {
     0,     0,     0,     0,     65320, 65320, 0,     0,     0,     0,     0,
     0,     0,     0,     0,     0,     65320, 65320, 0,     0,     0,     0,
@@ -432,7 +469,6 @@ static const uint16_t mainAlienSpr[352] = {
     0,     0,     65320, 65320, 0,     0,     0,     0,     0,     0,     0,
     0,     0,     0,     0,     0,     0,     0,     65320, 65320, 0,     0,
 };
-
 static const uint16_t respawn_flicker[88] = {
     0,     65535, 0, 0,     0, 0, 0,     0, 0,     65535, 0,     0, 0,
     65535, 0,     0, 0,     0, 0, 65535, 0, 0,     0,     0,     0, 65535,
@@ -444,8 +480,11 @@ static const uint16_t respawn_flicker[88] = {
 };
 
 /*
- * 10. MAIN
+ * ============================================================================
+ * 7. MAIN
+ * ============================================================================
  */
+
 int main(void) {
   /* Hardware */
   initClock();
@@ -467,7 +506,6 @@ int main(void) {
         help(&currentAppState);
         break;
       case PLAYING:
-        // Todo ascii art
         printAscii();
 
         start_sound_effect_ch1(enter_game_notes_ch1, enter_game_times_ch1,
@@ -494,21 +532,12 @@ int main(void) {
 }
 
 /*
- * FUNCTION DEFINITIONS
+ * ============================================================================
+ * 8. FUNCTION DEFINITIONS
+ * ============================================================================
  */
 
-
-//   // temp
-//   // GPIOC->ODR |= (1 << 3);
-
-//   // Set LEDs based on lives
-//   GPIOA->ODR |= (lives >= 1) ? (1 << 1) : 0;
-//   GPIOB->ODR |= (lives >= 2) ? (1 << 3) : 0;
-//   GPIOA->ODR |= (lives == 3) ? (1 << 2) : 0;
-// }
-
-/* --- Utility / timing / random -------------------------------------------
- */
+/* --- Random / utility helpers -------------------------------------------- */
 uint32_t xorshift32() {
   randState ^= randState << 13;
   randState ^= randState >> 17;
@@ -528,22 +557,15 @@ static uint32_t randomFireDelay(void) {
   uint32_t range = ALIEN_FIRE_MAX_MS - ALIEN_FIRE_MIN_MS;
   return ALIEN_FIRE_MIN_MS + (xorshift32() % range);
 }
-
 static uint32_t randomMainAlienDelay(void) {
   uint32_t range = MAIN_ALIEN_MAX_DELAY - MAIN_ALIEN_MIN_DELAY;
   return MAIN_ALIEN_MIN_DELAY + (xorshift32() % range);
 }
-
 uint8_t get_random_bit(uint32_t* state) {
   (void)state;
   return xorshift32() & 1u;
 }
-int isInside(uint16_t x1,
-             uint16_t y1,
-             uint16_t w,
-             uint16_t h,
-             uint16_t px,
-             uint16_t py) {
+int isInside(uint16_t x1, uint16_t y1, uint16_t w, uint16_t h, uint16_t px, uint16_t py) {
   return (px >= x1 && px <= x1 + w && py >= y1 && py <= y1 + h) ? 1 : 0;
 }
 
@@ -566,8 +588,85 @@ void loadBackground() {
 void clearDisplay() {
   fillRectangle(0, 0, SCREEN_W, SCREEN_H, 0);
 }
+/*
+ * Serial output function:
+ * Print hello world
+ */
+static void printAscii(void) {
+  eputs("\r\nGood luck! You'll need it.\r\n");
+  eputs("\r\n    @@          @@    \r\n");
+  eputs("\r\n      @@      @@      \r\n");
+  eputs("\r\n    @@@@@@@@@@@@@@    \r\n");
+  eputs("\r\n  @@@@  @@@@@@  @@@@  \r\n");
+  eputs("\r\n@@@@@@@@@@@@@@@@@@@@@@\r\n");
+  eputs("\r\n@@  @@@@@@@@@@@@@@  @@\r\n");
+  eputs("\r\n@@  @@          @@  @@\r\n");
+  eputs("\r\n      @@@@  @@@@      \r\n");
+}
+static void makeBackground(int starCount) {
+  randState = milliseconds;
+  for (uint16_t i = 0; i < starCount; ++i) {
+    uint16_t x = (uint16_t)(xorshift32() % SCREEN_W);
+    uint16_t y = (uint16_t)(xorshift32() % SCREEN_H);
 
-/* --- Game initialisation -------------------------------------------------- */
+    // uint16_t x = (uint16_t)(xorshift32() % SCREEN_W);
+    // uint16_t y = (uint16_t)(xorshift32() % SCREEN_H);
+
+    int r = xorshift32() % 3;
+    // int r = xorshift32() % 3;
+    uint16_t colour;
+    if (r == 0) {
+      colour = STAR_RED;
+    } else if (r == 1) {
+      colour = STAR_BLUE;
+    } else {
+      colour = STAR_WHITE;
+    }
+
+    putPixel(x, y, colour);
+  }
+}
+
+/*
+Splash screen with loading bar
+*/
+static void splashScreen() {
+  // Clear display as precaution
+  clearDisplay();
+
+  // Create the starry background
+  // makeBackground(30);
+  loadBackground();
+
+  // Create loadedBit variable to make the amount of bit variables there will be
+  // (Make it progress smoothly)
+  const int loadedBit = 50;
+  // Pixels loaded per individual loaded bit
+  const uint16_t bitWidth = LBAR_W / loadedBit;
+  // delay until three seconds
+  const uint16_t delayMs = 3000 / loadedBit;
+
+  // Draw the bar background
+  drawRectangle(LBAR_X, LBAR_Y, LBAR_W, LBAR_H, LBAR_BACKGROUND);
+
+  printText("LOADING...", 30, LBAR_Y - 10, STAR_WHITE, 0);
+  // Animate the filling of the background
+  for (int i = 0; i <= loadedBit; i++) {
+    /* Corner Button ==>  Main Menu  // PA9*/
+
+    if ((GPIOA->IDR & (1 << 9)) == 0) {
+      return;
+    }
+    int w = i * bitWidth;
+
+    // Draw the filled percentage
+    fillRectangle(LBAR_X, LBAR_Y, w, LBAR_H, LBAR_FILL);
+    // Delay to make look like loading
+    delay(delayMs);
+  }
+}
+
+/* --- Game initialisation / reset ----------------------------------------- */
 static void parkAlienBullet(int col) {
   AlienGrid* ag = &gs.aliens;
   Bullet* b = &ag->ab[col];
@@ -627,124 +726,6 @@ static void initAlienGrid() {
     ag->nextFireTime[i] = milliseconds + randomFireDelay();
   }
 }
-
-static void buildRandomAlienPattern(void) {
-  AlienGrid* ag = &gs.aliens;
-
-  int total = ALIEN_ROWS * ALIEN_COLS;
-  int target = ALIEN_RESPAWN_MIN +
-               (xorshift32() % (ALIEN_RESPAWN_MAX - ALIEN_RESPAWN_MIN + 1));
-
-  if (target > total)
-    target = total;
-
-  for (int i = 0; i < ALIEN_ROWS; i++) {
-    for (int j = 0; j < ALIEN_COLS; j++) {
-      ag->nextStatus[i][j] = 1; /* dead / empty */
-    }
-  }
-
-  int placed = 0;
-  while (placed < target) {
-    int idx = xorshift32() % total;
-    int r = idx / ALIEN_COLS;
-    int c = idx % ALIEN_COLS;
-
-    if (ag->nextStatus[r][c] != 0) {
-      ag->nextStatus[r][c] = 0; /* alive */
-      placed++;
-    }
-  }
-}
-
-static void startAlienRespawn(void) {
-  AlienGrid* ag = &gs.aliens;
-
-  ag->respawning = 1;
-  ag->previewVisible = 0;
-  ag->flashStep = 0;
-  ag->respawnTimer = milliseconds;
-  ag->redrawAll = 1;
-
-  ag->offsetX = ALIEN_ORIGIN_X;
-  ag->offsetY = ALIEN_ORIGIN_Y;
-  ag->oldOffsetX = ALIEN_ORIGIN_X;
-  ag->oldOffsetY = ALIEN_ORIGIN_Y;
-  ag->dirX = -1;
-  ag->earToggle = 0;
-  ag->lastMoveTime = milliseconds;
-
-  buildRandomAlienPattern();
-
-  resetPlayerBullet();
-
-  for (int j = 0; j < ALIEN_COLS; j++) {
-    fillRectangle(gs.aliens.ab[j].coords.x, gs.aliens.ab[j].coords.y, BULLET_W,
-                  BULLET_H, 0);
-    fillRectangle(gs.aliens.ab[j].coords.oldX, gs.aliens.ab[j].coords.oldY,
-                  BULLET_W, BULLET_H, 0);
-    gs.aliens.ab[j].state = BULLET_READY;
-  }
-}
-
-static void applyAlienRespawnPattern(void) {
-  AlienGrid* ag = &gs.aliens;
-
-  for (int i = 0; i < ALIEN_ROWS; i++) {
-    for (int j = 0; j < ALIEN_COLS; j++) {
-      ag->status[i][j] = ag->nextStatus[i][j];
-    }
-  }
-
-  for (int j = 0; j < ALIEN_COLS; j++) {
-    parkAlienBullet(j);
-    ag->nextFireTime[j] = milliseconds + randomFireDelay();
-  }
-
-  ag->respawning = 0;
-  ag->previewVisible = 0;
-  ag->flashStep = 0;
-  ag->redrawAll = 1;
-  ag->lastMoveTime = milliseconds;
-  ag->oldOffsetX = ag->offsetX;
-  ag->oldOffsetY = ag->offsetY;
-}
-
-static void updateAlienRespawn(uint32_t now) {
-  AlienGrid* ag = &gs.aliens;
-
-  if (!ag->respawning)
-    return;
-
-  if (now - ag->respawnTimer < ALIEN_RESPAWN_FLASH_MS)
-    return;
-
-  ag->respawnTimer = now;
-  ag->flashStep++;
-
-  switch (ag->flashStep) {
-    case 1:
-    case 3:
-    case 5:
-      ag->previewVisible = 1;
-      ag->redrawAll = 1;
-      start_sound_effect_ch1(aliens_spawning_notes, aliens_spawning_times,
-                             aliens_spawning_note_count, 0);
-      break;
-
-    case 2:
-    case 4:
-    case 6:
-      ag->previewVisible = 0;
-      ag->redrawAll = 1;
-      break;
-
-    case 7:
-      applyAlienRespawnPattern();
-      break;
-  }
-}
-
 static void initMainAlien(MainAlien* ma) {
   ma->coords.x = 0;
   ma->coords.y = MAIN_ALIEN_Y;
@@ -758,7 +739,6 @@ static void initMainAlien(MainAlien* ma) {
   ma->nextSpawnTime = milliseconds + randomMainAlienDelay();
   ma->lastMoveTime = 0;
 }
-
 static void initGameState() {
   gs.highScore = records[0].score;
   randState = milliseconds | 1; /* Ship */
@@ -802,6 +782,121 @@ static void resetGame(void) {
   renderAliens();
   putImage(gs.ship.coords.x, gs.ship.coords.y, SHIP_W, SHIP_H, spaceShip, 1, 0);
   /* HUD line stays - was never erased */
+}
+
+/* --- Alien respawn system ------------------------------------------------ */
+static void buildRandomAlienPattern(void) {
+  AlienGrid* ag = &gs.aliens;
+
+  int total = ALIEN_ROWS * ALIEN_COLS;
+  int target = ALIEN_RESPAWN_MIN +
+               (xorshift32() % (ALIEN_RESPAWN_MAX - ALIEN_RESPAWN_MIN + 1));
+
+  if (target > total)
+    target = total;
+
+  for (int i = 0; i < ALIEN_ROWS; i++) {
+    for (int j = 0; j < ALIEN_COLS; j++) {
+      ag->nextStatus[i][j] = 1; /* dead / empty */
+    }
+  }
+
+  int placed = 0;
+  while (placed < target) {
+    int idx = xorshift32() % total;
+    int r = idx / ALIEN_COLS;
+    int c = idx % ALIEN_COLS;
+
+    if (ag->nextStatus[r][c] != 0) {
+      ag->nextStatus[r][c] = 0; /* alive */
+      placed++;
+    }
+  }
+}
+static void startAlienRespawn(void) {
+  AlienGrid* ag = &gs.aliens;
+
+  ag->respawning = 1;
+  ag->previewVisible = 0;
+  ag->flashStep = 0;
+  ag->respawnTimer = milliseconds;
+  ag->redrawAll = 1;
+
+  ag->offsetX = ALIEN_ORIGIN_X;
+  ag->offsetY = ALIEN_ORIGIN_Y;
+  ag->oldOffsetX = ALIEN_ORIGIN_X;
+  ag->oldOffsetY = ALIEN_ORIGIN_Y;
+  ag->dirX = -1;
+  ag->earToggle = 0;
+  ag->lastMoveTime = milliseconds;
+
+  buildRandomAlienPattern();
+
+  resetPlayerBullet();
+
+  for (int j = 0; j < ALIEN_COLS; j++) {
+    fillRectangle(gs.aliens.ab[j].coords.x, gs.aliens.ab[j].coords.y, BULLET_W,
+                  BULLET_H, 0);
+    fillRectangle(gs.aliens.ab[j].coords.oldX, gs.aliens.ab[j].coords.oldY,
+                  BULLET_W, BULLET_H, 0);
+    gs.aliens.ab[j].state = BULLET_READY;
+  }
+}
+static void applyAlienRespawnPattern(void) {
+  AlienGrid* ag = &gs.aliens;
+
+  for (int i = 0; i < ALIEN_ROWS; i++) {
+    for (int j = 0; j < ALIEN_COLS; j++) {
+      ag->status[i][j] = ag->nextStatus[i][j];
+    }
+  }
+
+  for (int j = 0; j < ALIEN_COLS; j++) {
+    parkAlienBullet(j);
+    ag->nextFireTime[j] = milliseconds + randomFireDelay();
+  }
+
+  ag->respawning = 0;
+  ag->previewVisible = 0;
+  ag->flashStep = 0;
+  ag->redrawAll = 1;
+  ag->lastMoveTime = milliseconds;
+  ag->oldOffsetX = ag->offsetX;
+  ag->oldOffsetY = ag->offsetY;
+}
+static void updateAlienRespawn(uint32_t now) {
+  AlienGrid* ag = &gs.aliens;
+
+  if (!ag->respawning)
+    return;
+
+  if (now - ag->respawnTimer < ALIEN_RESPAWN_FLASH_MS)
+    return;
+
+  ag->respawnTimer = now;
+  ag->flashStep++;
+
+  switch (ag->flashStep) {
+    case 1:
+    case 3:
+    case 5:
+      ag->previewVisible = 1;
+      ag->redrawAll = 1;
+      start_sound_effect_ch1(aliens_spawning_notes, aliens_spawning_times,
+                             aliens_spawning_note_count, 0);
+      break;
+
+    case 2:
+    case 4:
+    case 6:
+      ag->previewVisible = 0;
+      ag->redrawAll = 1;
+      break;
+
+    case 7:
+      applyAlienRespawnPattern();
+      break;
+  }
 }
 
 /* --- Menu / app state screens -------------------------------------------- */
@@ -927,7 +1022,6 @@ void help(AppState* as) {
     }
   }
 }
-
 void selectMode(AppState* as, GameMode* gm) {
   clearDisplay();
 
@@ -1004,7 +1098,6 @@ void selectMode(AppState* as, GameMode* gm) {
     }
   }
 }
-
 void showScoreBoard(AppState* as) {
   clearDisplay();
 
@@ -1063,7 +1156,6 @@ void showScoreBoard(AppState* as) {
 
   return;
 }
-
 void getPause(PlayingState* ps, AppState* as) {
   uint16_t pinkColor = RGBToWord(255, 20, 147);
 
@@ -1108,7 +1200,8 @@ void getPause(PlayingState* ps, AppState* as) {
 
         if (c != '0') {
           eputchar(c);
-          eputchar('\r\n');
+          eputchar('\r');
+          eputchar('\n');
         }
 
         if ((c >= 65 && c <= 90) || (c >= 97 && c <= 122)) {
@@ -1241,7 +1334,8 @@ void getPause(PlayingState* ps, AppState* as) {
 
       if (c != 0) {
         eputchar(c);
-        eputchar('\r\n');
+        eputchar('\r');
+        eputchar('\n');
       }
 
       /* Highlight selected option */
@@ -1278,7 +1372,6 @@ void getPause(PlayingState* ps, AppState* as) {
     }
   }
 }
-
 void playing(AppState* as) {
   clearDisplay();
 
@@ -1389,9 +1482,7 @@ void playing(AppState* as) {
   }
 }
 
-/* --- Input ----------------------------------------------------------------
- */
-
+/* --- Input handling ------------------------------------------------------ */
 static void handleInput(PlayingState* ps, AppState* as) {
   char c = 0;
 
@@ -1401,7 +1492,8 @@ static void handleInput(PlayingState* ps, AppState* as) {
 
   if (c != 0) {
     eputchar(c);
-    eputchar('\r\n');
+    eputchar('\r');
+    eputchar('\n');
   }
 
   /* Right – PB4 or D */
@@ -1443,8 +1535,7 @@ static void handleInput(PlayingState* ps, AppState* as) {
   }
 }
 
-/* --- Alien movement / firing ---------------------------------------------
- */
+/* --- Alien movement / firing --------------------------------------------- */
 static int isAlienGridMt(void) {
   AlienGrid* ag = &gs.aliens;
   for (int i = 0; i < ALIEN_ROWS; i++) {
@@ -1522,7 +1613,6 @@ static void moveAliens(uint32_t now) {
       parkAlienBullet(j);
   }
 }
-
 static void updateAlienFire(uint32_t now) {
   AlienGrid* ag = &gs.aliens;
   for (int j = 0; j < ALIEN_COLS; j++) {
@@ -1544,7 +1634,6 @@ static void updateAlienFire(uint32_t now) {
     }
   }
 }
-
 static void moveMainAlien(MainAlien* ma) {
   uint32_t now = milliseconds;
 
@@ -1604,16 +1693,8 @@ static void moveMainAlien(MainAlien* ma) {
   }
 }
 
-/* --- Collision / bullet state --------------------------------------------
- */
-static int checkCollision(uint16_t o1X,
-                          uint16_t o1Y,
-                          uint16_t o1w,
-                          uint16_t o1h,
-                          uint16_t o2X,
-                          uint16_t o2Y,
-                          uint16_t o2w,
-                          uint16_t o2h) {
+/* --- Collision / bullet state -------------------------------------------- */
+static int checkCollision(uint16_t o1X, uint16_t o1Y, uint16_t o1w, uint16_t o1h, uint16_t o2X, uint16_t o2Y, uint16_t o2w, uint16_t o2h) {
   if (o1X + o1w <= o2X)
     return 0;
   if (o1X >= o2X + o2w)
@@ -1649,10 +1730,7 @@ static void resetPlayerBullet(void) {
   gs.bullet.coords.y = gs.bullet.coords.oldY =
       gs.ship.coords.y - BULLET_OFFSET_Y;
 }
-static void repairAliensUnderRect(uint16_t rx,
-                                  uint16_t ry,
-                                  uint16_t rw,
-                                  uint16_t rh) {
+static void repairAliensUnderRect(uint16_t rx, uint16_t ry, uint16_t rw, uint16_t rh) {
   AlienGrid* ag = &gs.aliens;
   for (int i = 0; i < ALIEN_ROWS; i++) {
     for (int j = 0; j < ALIEN_COLS; j++) {
@@ -1685,7 +1763,6 @@ static int updateAlienBulletCollision(void) {
   }
   return hit;
 }
-
 static void updateMainAlienBulletCollision(void) {
   MainAlien* ma = &gs.mysteryAlien;
   Bullet* b = &gs.bullet;
@@ -1705,7 +1782,6 @@ static void updateMainAlienBulletCollision(void) {
     initMainAlien(&gs.mysteryAlien);
   }
 }
-
 static void updatePlayerCollision(void) {
   if (gs.bullet.state != BULLET_FIRE)
     return;
@@ -1780,8 +1856,7 @@ static int checkGameOver(void) {
   return 0;
 }
 
-/* --- Rendering ------------------------------------------------------------
- */
+/* --- Rendering ----------------------------------------------------------- */
 /*
  * renderAliens - full grid redraw.
  * Used at startup, level reset, and after every move tick.
@@ -1846,22 +1921,6 @@ static void renderAliens(void) {
   ag->redrawAll = 0;
 }
 /*
- * Serial output function:
- * Print hello world
- */
-static void printAscii(void) {
-  eputs("\r\nGood luck! You'll need it.\r\n");
-  eputs("\r\n    @@          @@    \r\n");
-  eputs("\r\n      @@      @@      \r\n");
-  eputs("\r\n    @@@@@@@@@@@@@@    \r\n");
-  eputs("\r\n  @@@@  @@@@@@  @@@@  \r\n");
-  eputs("\r\n@@@@@@@@@@@@@@@@@@@@@@\r\n");
-  eputs("\r\n@@  @@@@@@@@@@@@@@  @@\r\n");
-  eputs("\r\n@@  @@          @@  @@\r\n");
-  eputs("\r\n      @@@@  @@@@      \r\n");
-}
-
-/*
 Dirty-rect ship: erase only the vacated edge strip
 */
 static void renderShip(void) {
@@ -1916,14 +1975,9 @@ static void renderAlienBullets(void) {
                   ALIEN_BULLET_COLOR);
   }
 }
-static void renderBarricade() {
-  fillRectangle(20, 115, 20, 10, 51975);
-}
-
 static void renderGameOverScreen(PlayingState* ps, AppState* as) {
   getPause(ps, as);
 }
-
 static void renderStats(void) {
   printText("S:", 83, HUD_LINE_Y + 5, RGBToWord(128, 0, 128), 0);
   printNumber((uint16_t)gs.score, 95, HUD_LINE_Y + 5, RGBToWord(128, 0, 128),
@@ -1942,68 +1996,4 @@ static void renderScene(void) {
   renderPlayerBullet();
   renderAlienBullets();
   renderStats();
-}
-
-static void makeBackground(int starCount) {
-  randState = milliseconds;
-  for (uint16_t i = 0; i < starCount; ++i) {
-    uint16_t x = (uint16_t)(xorshift32() % SCREEN_W);
-    uint16_t y = (uint16_t)(xorshift32() % SCREEN_H);
-
-    // uint16_t x = (uint16_t)(xorshift32() % SCREEN_W);
-    // uint16_t y = (uint16_t)(xorshift32() % SCREEN_H);
-
-    int r = xorshift32() % 3;
-    // int r = xorshift32() % 3;
-    uint16_t colour;
-    if (r == 0) {
-      colour = STAR_RED;
-    } else if (r == 1) {
-      colour = STAR_BLUE;
-    } else {
-      colour = STAR_WHITE;
-    }
-
-    putPixel(x, y, colour);
-  }
-}
-
-/*
-Splash screen with loading bar
-*/
-
-static void splashScreen() {
-  // Clear display as precaution
-  clearDisplay();
-
-  // Create the starry background
-  // makeBackground(30);
-  loadBackground();
-
-  // Create loadedBit variable to make the amount of bit variables there will be
-  // (Make it progress smoothly)
-  const int loadedBit = 50;
-  // Pixels loaded per individual loaded bit
-  const uint16_t bitWidth = LBAR_W / loadedBit;
-  // delay until three seconds
-  const uint16_t delayMs = 3000 / loadedBit;
-
-  // Draw the bar background
-  drawRectangle(LBAR_X, LBAR_Y, LBAR_W, LBAR_H, LBAR_BACKGROUND);
-
-  printText("LOADING...", 30, LBAR_Y - 10, STAR_WHITE, 0);
-  // Animate the filling of the background
-  for (int i = 0; i <= loadedBit; i++) {
-    /* Corner Button ==>  Main Menu  // PA9*/
-
-    if ((GPIOA->IDR & (1 << 9)) == 0) {
-      return;
-    }
-    int w = i * bitWidth;
-
-    // Draw the filled percentage
-    fillRectangle(LBAR_X, LBAR_Y, w, LBAR_H, LBAR_FILL);
-    // Delay to make look like loading
-    delay(delayMs);
-  }
 }

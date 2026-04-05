@@ -1,0 +1,14 @@
+#ifndef SERIAL_H
+#define SERIAL_H
+
+#include <stdint.h>
+
+void initSerial(void);
+void eputchar(char c);
+char egetchar(void);
+int serialCharAvailable(void);
+char serialGetCharNonBlocking(void);
+void eputs(char *String);
+void printDecimal(int32_t Value);
+
+#endif
