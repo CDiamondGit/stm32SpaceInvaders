@@ -109,4 +109,4 @@
 #define A8	7040
 #define AS8_Bb8	7459
 #define B8	7902
-#define REST 0
+#define REST 0 // special value meaning to play silence instead of a note
