@@ -572,8 +572,8 @@ int isInside(uint16_t x1, uint16_t y1, uint16_t w, uint16_t h, uint16_t px, uint
 /* --- Background / screen helpers ----------------------------------------- */
 void loadBackground() {
   makeBackground(40);
-  printTextBold("Space", 10, 10, 1, 0);
-  printTextBold("Invader", 40, 20, 1, 0);
+  printTextBold("Space", 10, 10, STAR_WHITE, 0);
+  printTextBold("Invader", 40, 20, STAR_WHITE, 0);
 
   putImage(20, 20, 11, 8, greenAlien[0], 1, 0);
   putImage(80, 10, 11, 8, greenAlien[1], 1, 0);
